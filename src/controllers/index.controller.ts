@@ -38,8 +38,10 @@ class IndexController {
             }
 
             const resArr = []
+            // const promises = []
             for (let index = 0; index < data.length; index++) {
                 const item = data[index]
+                // promises.push(this.getTrendyolProperty(item, index))
                 const liItems = await this.getTrendyolProperty(item, index)
                 console.log("liItems", liItems)
                 resArr.push(liItems)

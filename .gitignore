@@ -133,3 +133,5 @@ dist
 # Package Lock File
 package-lock.json
 yarn.lock
+
+dist
