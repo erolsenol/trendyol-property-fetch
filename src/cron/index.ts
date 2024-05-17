@@ -1,515 +1,740 @@
 import cron from "node-cron"
 import { prismaClient } from "@/prisma"
-// import moment from "moment"
-// import { Worker, Queue } from "bullmq"
-// import IORedis from "ioredis"
-import * as urlSlug from "url-slug"
+import moment from "moment"
+import { Worker, Queue, QueueEvents, SandboxedJob } from "bullmq"
+import IORedis from "ioredis"
 import { execute } from "@getvim/execute"
+import _ from "lodash"
+
+import { NODE_ENV, SERVER_ADDRESS } from "@config"
 
 import { servicePuppeteer, goToConfig } from "./puppeteer"
 import { logger } from "../utils/logger"
-import { NewsData, newsCategory } from "./constants"
-import { randomNumber } from "@/helper"
+import { telegram } from "./telegram"
 import ServiceGoogleStorage from "./googleStorage"
 
 const serviceGoogleStorage = new ServiceGoogleStorage()
-
-// import Queue from "queue"
+let pageCount: number = 5,
+    browserCount: number = 1
 
 async function timeout(ms: number) {
     return new Promise(resolve => setTimeout(resolve, ms))
 }
+console.log("NODE_ENV", NODE_ENV, "NODE_ENV", NODE_ENV, "NODE_ENV", NODE_ENV)
+interface dbUpdate {
+    id?: number
+    last_price?: number
+    last_view_date: string
+    hostname?: string
+    no_stock: boolean
+    last_message_date?: string
+    message_count?: number
+}
 
-// const PUPPETEER_PAGE_COUNT = Number(process.env.PUPPETEER_PAGE_COUNT || 5)
+const POSTGRES_USER = process.env.POSTGRES_USER
+const POSTGRES_PASSWORD = process.env.POSTGRES_PASSWORD
+const PUPPETEER_PAGE_COUNT = Number(process.env.PUPPETEER_PAGE_COUNT || 6)
+const INSTANCE_NO = process.env.INSTANCE_NO
 
-// const connection = new IORedis({
-//     maxRetriesPerRequest: null,
-// })
-// const trackingQueue = new Queue("queue", { connection })
+console.log("process.env.INSTANCE_NO", process.env.INSTANCE_NO)
+// const connection = new IORedis(process.env.REDIS_URL || "")
+// const connection = new IORedis("redis://redis:6379")
+// const connection = new IORedis("redis://:Snc3807!!@redis:6379/16")
+// const connection = new IORedis()
 
-// const trackingWorker = new Worker("queue", async job => trackingItemWork(job.data, job.data.id), {
-//     connection,
-//     concurrency: PUPPETEER_PAGE_COUNT,
-//     removeOnComplete: { count: 1000 },
-//     removeOnFail: { count: 5000 },
-//     autorun: true,
-// })
+const connection = new IORedis({
+    port: 6379, // Redis port
+    maxRetriesPerRequest: null,
+})
 
-// const drainedIndex = 0
-// trackingWorker.on("drained", async () => {
-//     if (drainedIndex > 0) {
-//         // await scanCompleted()
-//     }
-//     drainedIndex++
-// })
+const trackingQueues: any = {}
+const queueEvents: any = {}
+const trackingWorkers: any = {}
+let trackingLength: number,
+    trackingScanCount: number = 0
 
-const newsSites = ["haberler"]
-const pages = {}
-let dbSourceSites = [],
-    dbSourceCategories = []
+const appData = {}
+const browsers: any = {}
 
-async function startNewsSearch() {
+async function startPriceTracking(browserName = "0", items: any = []) {
     try {
-        console.log("running a task every */30 minute")
-        console.log("dbSourceSites", dbSourceSites)
-        if (dbSourceSites.length < 1) {
-            dbSourceSites = await prismaClient.sourceSite.findMany()
-            console.log("response dbSourceSites:", dbSourceSites)
+        logger.info(`@@@  startPriceTracking  browserName:${browserName}  @@@`)
+        logger.info(`running a task every five minute INSTANCE_NO: ${INSTANCE_NO}`)
+        // appData.start_date = moment().toISOString()
+        // _index = 0
+
+        if (!(browserName in servicePuppeteer.browsers)) {
+            const resBrowser = await servicePuppeteer.newBrowser(browserName)
+            browsers[browserName] = resBrowser
+            await timeout(100)
+            logger.info(`@@@  create browser:${browserName}  @@@`)
+        } else {
+            logger.info(`@@@  already have browser:${browserName}  @@@`)
         }
-        console.log("dbSourceCategories", dbSourceCategories)
-        if (dbSourceCategories.length < 1) {
-            dbSourceCategories = await prismaClient.category.findMany()
-        }
-        console.log("servicePuppeteer.newBrowser")
-        await servicePuppeteer.newBrowser()
-        await timeout(250)
 
-        for (let index = 0; index < newsSites.length; index++) {
-            const site = newsSites[index]
-            pages[site] = await servicePuppeteer.newPage(site)
+        if (items.length > 0) {
+            appData.active_tracking = items.length
+            appData.start_date = moment().toISOString()
+            // page = await servicePuppeteer.newPage("cron")
+            // page.setDefaultTimeout(0)
 
-            //bullmq
-            let links = []
-            if (site === "haber7") {
-                links = await siteScanHaber7Links(site, pages[site])
-            } else if (site === "haberler") {
-                console.log("site  haberler siteScanHaberler7Links")
-                links = await siteScanHaberler7Links(site, pages[site])
+            const sortItems = _.shuffle(items)
+            // if (sortItems.length > 2 && sortItems[0].hostname && sortItems[1].hostname) {
+            //     sortItems.sort((a, b) => a.hostname?.localeCompare(b.hostname))
+            // }
+
+            for (let index = 0; index < sortItems.length; index++) {
+                const sortItem = sortItems[index]
+                trackingQueues[browserName].add(
+                    `tracking_${browserName}`,
+                    { ...sortItem, browser: browserName },
+                    {
+                        removeOnComplete: {
+                            age: 600, // keep up to 10 minute
+                            count: 500, // keep up to 500 jobs
+                        },
+                        removeOnFail: {
+                            age: 3600, // keep up to 1 hours
+                        },
+                    }
+                )
             }
-
-            console.log("links.length", links.length)
-            for (let linkIndex = 0; linkIndex < links.length; linkIndex++) {
-                //Delay
-                const num = randomNumber(1000, 4000)
-                await timeout(num)
-                let newsObj = new NewsData()
-                const link = links[linkIndex]
-                if (site === "haber7") {
-                    newsObj = await getHaber7NewsContent(pages[site], link)
-                } else if (site === "haberler") {
-                    newsObj = await getHaberlerNewsContent(pages[site], link, site)
-                }
-
-                const newsUrlCheck = await prismaClient.news.findUnique({
-                    where: { url: newsObj.url },
-                })
-                if (newsUrlCheck) {
-                    console.log(
-                        `index: ${linkIndex} already exists in the database: ${newsObj.url}`
-                    )
-                    continue
-                }
-
-                const findCategory = dbSourceCategories.find(a => a.name === newsObj.category)
-                if (!findCategory) {
-                    logger.error(`category not found name: ${newsObj.category}`)
-                    continue
-                }
-                newsObj.categoryId = findCategory.id
-
-                const findSourceSite = dbSourceSites.find(a => a.name === newsObj.sourceSite)
-                if (!findSourceSite) {
-                    logger.error(`source site not found name: ${newsObj.sourceSite}`)
-                    continue
-                }
-                newsObj.sourceSiteId = findSourceSite.id
-
-                delete newsObj.category
-                delete newsObj.addedDate
-                if (!newsObj.team) {
-                    delete newsObj.team
-                }
-
-                const createData = await prismaClient.news.create({ data: newsObj })
-                if (createData) {
-                    console.log(`index: ${linkIndex} created data: ${newsObj.url}`)
-                }
-            }
+            // const jobs = await trackingQueues[browserName].addBulk(
+            //     sortItems.map(a => ({ ...a, browser: browserName }))
+            // )
+            // console.log("jobs:", jobs)
+            console.log("add completed:", sortItems.length)
         }
     } catch (error) {
         console.log(error)
-        logger.error(`[startNewsSearch] >> ${JSON.stringify(error)}`)
+        logger.error(`[startPriceTracking] >> ${JSON.stringify(error)}`)
     }
 }
 
-async function getHaberlerNewsContent(page, url, siteName): Promise<NewsData> {
-    return new Promise(async (resolve, reject) => {
+async function trackingItemWork(job: SandboxedJob) {
+    return new Promise<boolean>(async (resolve, reject) => {
         try {
-            const news = new NewsData()
-
-            // console.log("page.goto url:", url)
-            await page.goto(url, goToConfig)
-            await timeout(250)
-
-            const icerikAlaniEl = await page.$("#icerikAlani")
-            const hbbcLeftEl = await icerikAlaniEl.$(".hbbcLeft")
-            const hbbcTextEls = await hbbcLeftEl.$$(".hbbcText")
-            const categoryText = await hbbcTextEls[1].evaluate(a => a.children[0].innerText)
-            const categoryValue = newsCategory[siteName][categoryText]
-            news.category = categoryValue
-            // console.log("news.category", news.category)
-
-            const titleEl = await icerikAlaniEl.$("h1[class='title']")
-            const titleText = await titleEl.evaluate(a => a.innerText)
-            news.title = titleText
-            // console.log("news.title", news.title)
-
-            const videoDivEl = await icerikAlaniEl.$("#video_div")
-            if (videoDivEl) {
-                await page.waitForFunction(
-                    'document.getElementById("contentElement").getAttribute("src") != null'
-                )
-                const contentElement = await videoDivEl.$("#contentElement")
-                const videoHref = await contentElement.evaluate(a => a.getAttribute("src"))
-                news.video = videoHref
-                // console.log("news.video", news.video)
+            const index = job.data.id
+            const itemId = job.data.id
+            const item = job.data
+            const browserName = job.data.browser
+            // await servicePuppeteer.checkBrowser()
+            logger.info(
+                `@@@  trackingItemWork  index:${index}  @@  browserName:${browserName}  @@@`
+            )
+            if (
+                !(browserName in servicePuppeteer.browsers) &&
+                !(browserName in servicePuppeteer.pages)
+            ) {
+                return reject(false)
             }
 
-            const detayVerisiAEl = await icerikAlaniEl.$("div[class='detay-verisi-a']")
-            const timeEl = await detayVerisiAEl.$("time")
-            const addedDate = await timeEl.evaluate(a => a.getAttribute("datetime"))
-            news.addedDate = addedDate
-            // console.log("news.addedDate", news.addedDate)
+            await servicePuppeteer.newPage(index.toString(), browserName)
+            await timeout(50)
+            const page = servicePuppeteer.pages[browserName][index.toString()]
 
-            const h2DescriptionEl = await icerikAlaniEl.$("h2[class='description']")
-            const spotText = await h2DescriptionEl.evaluate(a => a.innerText)
-            news.spot = spotText
-            // console.log("news.spot", news.spot)
-
-            const haberMetniEl = await icerikAlaniEl.$("main[class*='haber_metni']")
-            const paragraphs = await haberMetniEl.evaluate(a => {
-                const contents = []
-                for (const child of a.children) {
-                    if ((child.tagName === "P" || child.tagName === "H3") && child.innerText) {
-                        if (
-                            // child.getAttribute("id") !== "inpage_reklam" &&
-                            child.children.length == 0
-                        ) {
-                            contents.push(child.innerText)
-                        }
-                    }
-                }
-
-                return contents
-            })
-            news.paragraphs = paragraphs
-            // console.log("news.paragraphs", news.paragraphs)
-
-            const contentImageEls = await haberMetniEl.$$("img[class*='hbptMainImage']")
-            const imageHrefs = []
-
-            for (const imageEl of contentImageEls) {
-                await imageEl.scrollIntoView()
-                await timeout(150)
-                const imageHref = await imageEl.evaluate(a => a.getAttribute("src"))
-                if (!imageHref.includes("base64")) {
-                    imageHrefs.push(imageHref)
-                }
+            if (!page) {
+                return reject(false)
             }
-            news.images = imageHrefs
-            // console.log("news.images", news.images)
 
-            const nwsKeywordsEl = await icerikAlaniEl.$("#nwsKeywords")
-            const nwsKeywordText = await nwsKeywordsEl.evaluate(a => {
-                const texts = []
-                for (const child of a.children) {
-                    const keywordText = child.getAttribute("title")
-                    // const categoryValue = newsCategory[siteName][keywordText]
-                    // if (categoryValue)
-                    texts.push(keywordText)
-                }
-                return texts.join(",")
-            })
-            news.keywords = nwsKeywordText
-            // console.log("news.keywords", news.keywords)
-
-            const sourceUrl = await page.url()
-            news.sourceUrl = sourceUrl
-            news.sourceSite = siteName
-            news.url = stringToUrlConvert(titleText)
-
-            // console.log("news.sourceUrl", news.sourceUrl)
-            // console.log("news.sourceSite", news.sourceSite)
-            // console.log("news.url", news.url)
-
-            return resolve(news)
-        } catch (error) {
-            logger.error(`error getHaberlerNewsContent: ${error}`)
-            reject()
-        }
-    })
-}
-
-function stringToUrlConvert(data: string) {
-    const result = urlSlug.convert(data, {
-        separator: "-",
-        transformer: urlSlug.LOWERCASE_TRANSFORMER,
-        dictionary: {
-            Ç: "c",
-            ç: "c",
-            Ğ: "g",
-            ğ: "g",
-            Ö: "o",
-            ö: "o",
-            Ü: "u",
-            ü: "u",
-            Ş: "s",
-            ş: "s",
-            ı: "i",
-            İ: "ı",
-        },
-    })
-    return result
-}
-
-async function getHaber7NewsContent(page, url): Promise<NewsData> {
-    return new Promise(async (resolve, reject) => {
-        try {
-            const news = new NewsData()
-
-            console.log("getHaber7NewsContent url:", url)
-            const response = await page.goto(url, goToConfig)
-            await page.setContent((await response.buffer()).toString("utf8"))
-            await timeout(250)
-
-            let categoryText = ""
-            if (url.includes("video.haber7.com")) {
-                const breadcrumbsItem = await page.$("div[class='breadcrumbs']")
-                const breadcrumbs = await breadcrumbsItem.$$("a")
-                if (breadcrumbs.length > 1) {
-                    categoryText = await breadcrumbs[1].evaluate(a => a.getAttribute("title"))
-                }
-            } else if (url.includes("yasemin.com")) {
-                categoryText = "magazine"
-            } else if (url.includes("haber7.com")) {
-                const categoryItem = await page.$$("a[class='category']")
-                if (categoryItem.length > 1) {
-                    categoryText = await categoryItem[1].evaluate(item => item.innerText)
-                }
+            const priceStr = await getUrlToPrice(item.id, item.url, page)
+            if (!priceStr) {
+                logger.info("priceStr null page.close")
+                await servicePuppeteer.closePage(index.toString(), browserName)
+                return resolve(true)
             }
-            news.category = categoryText
-            console.log("news.category", news.category)
+            const hostname = urlToHost(item.url)
 
-            let itemAddedDate = null
-            if (url.includes("video.haber7.com")) {
-                const detailItem = await page.$("div[class='detail-info']")
-                const dateItem = await detailItem.$("div[class='date']")
-                news.addedDate = await dateItem.evaluate(a => a.innerText)
-            } else if (url.includes("yasemin.com")) {
-                const dateItem = await page.$("span[class='date']")
-                const timeItem = await page.$("span[class='time']")
-
-                const dateText = await dateItem.evaluate(a => a.innerText.trim())
-                const timeText = await timeItem.evaluate(a => a.innerText.trim())
-
-                news.addedDate = `${dateText} ${timeText}`
-            } else if (url.includes("haber7.com")) {
-                const itemAddedEl = await page.$("span[class='date-item added']")
-                itemAddedDate = await itemAddedEl.evaluate(item =>
-                    item.innerText.replace("GİRİŞ", "").trim()
-                )
-                news.addedDate = itemAddedDate
+            const priceVal = stringToPrice(hostname, priceStr)
+            console.log(
+                `trackingItemWork hostname: ${hostname} - index: ${index} - priceVal: ${priceVal}`
+            )
+            const dbUpdate: dbUpdate = {
+                no_stock: false,
+                last_view_date: moment().toISOString(),
             }
-            console.log("news.addedDate", news.addedDate)
-
-            if (url.includes("video.haber7.com")) {
-                const titleItem = await page.$("h1[class='program-title']")
-                news.title = await titleItem.evaluate(item => item.innerText)
-            } else if (url.includes("haber7.com")) {
-                const titleItem = await page.$("h1[class='title']")
-                news.title = await titleItem.evaluate(item => item.innerText)
-            } else if (url.includes("yasemin.com")) {
-                const h1Item = await page.$("h1")
-                news.title = await h1Item.evaluate(a => a.innerText)
+            if (!item.hostname) {
+                dbUpdate.hostname = hostname
             }
-            console.log("news.title", news.title)
+            if (hostname === "www.trendyol.com") {
+                const noStockEl = await page.evaluate(() => {
+                    const xpath = "//button[text()='Gelince Haber Ver']"
+                    const matchingElement = document.evaluate(
+                        xpath,
+                        document,
+                        null,
+                        XPathResult.FIRST_ORDERED_NODE_TYPE,
+                        null
+                    ).singleNodeValue
 
-            if (url.includes("haber7.com")) {
-                const spotItem = await page.$("h2[class='spot']")
-                const spotText = await spotItem.evaluate(item => item.innerText)
-                news.spot = spotText
-            }
-            console.log("news.spot", news.spot)
-
-            if (url.includes("video.haber7.com")) {
-                const detailVideoItem = await page.$("div[class='detail-video']")
-                const videoItem = await detailVideoItem.$("video")
-                news.video = await videoItem.evaluate(a => a.getAttribute("src"))
-            } else if (url.includes("haber7.com")) {
-                const newsImageItems =
-                    (await (await page.$("figure[class='news-image']")).$$("img")) || []
-                news.images = []
-                newsImageItems.forEach(async i => {
-                    const text = await i.evaluate(item => item.getAttribute("src"))
-                    if (text) {
-                        news.images.push(text)
-                    }
+                    return matchingElement ? "1" : "0"
                 })
-            } else if (url.includes("yasemin.com")) {
-                const imageItems = []
-                const galleryItemFigures = await page.$$("figure[class='gallery-item-figure']")
-                for (const figure of galleryItemFigures) {
-                    const imageItem = await figure.$("img")
-                    const imageSrc = await imageItem.evaluate(a => a.getAttribute("src"))
-                    if (imageSrc) {
-                        news.images.push(imageSrc)
-                    }
-                }
+                // logger.info(`@@@@@@@@ noStockEl:${noStockEl} @@@@@@@@@@@`)
+                dbUpdate.no_stock = noStockEl == "1"
             }
 
-            if (url.includes("haber7.com") && !url.includes("video.haber7.com")) {
-                const newsContentItem = await page.$("div[class='news-content']")
-                const newsContentInImages = await newsContentItem.$$("img")
-                newsContentInImages.forEach(async a => {
-                    const text = await a.evaluate(b => {
-                        const src = b.getAttribute("src")
-                        if (src && src.includes("haber7")) {
-                            return src
-                        }
+            if (!(priceVal > 0)) {
+                logger.info("priceVal < 1 page.close")
+                await servicePuppeteer.closePage(index.toString(), browserName)
+                return resolve(true)
+            }
+
+            if (!(item?.last_price > 0) && priceVal > 0) {
+                dbUpdate.last_price = priceVal
+            } else if (item?.last_price > 0 && priceVal > 0 && item?.target_rate) {
+                const targetPrice = (item.last_price / 100) * (100 - item?.target_rate)
+
+                // console.log("index", index)
+                // console.log("priceVal", priceVal)
+                // console.log("targetPrice", targetPrice)
+                if (targetPrice == 0) {
+                    // console.log("priceStr", priceStr)
+                    // console.log("priceVal", priceVal)
+                    // console.log("item.last_price", item.last_price)
+                    // console.log("item?.target_rate", item?.target_rate)
+                    // console.log("targetPrice", targetPrice)
+                    // console.log("item.url", item.url)
+                }
+
+                if (priceVal <= targetPrice && priceVal > 0) {
+                    logger.info(`send message: ${item.last_price} to ${priceVal}`)
+                    const realTrackingData = await prismaClient.tracking.findUnique({
+                        where: { id: itemId, status: true, deleted: false },
                     })
-                    if (text) {
-                        news.images.push(text)
-                    }
-                })
-            }
-            console.log("news.images", news.images)
-
-            if (url.includes("video.haber7.com")) {
-                const detailContentItem = await page.$("div[class='detail-content']")
-                const newsContentItems = await detailContentItem.$$("p")
-                newsContentItems.forEach(async a => {
-                    news.paragraphs.push(await a.evaluate(b => b.innerText))
-                })
-            } else if (url.includes("haber7.com") && !url.includes("video.haber7.com")) {
-                const newsContentItems = await (await page.$("div[class='news-content']")).$$("p")
-                news.paragraphs = []
-                newsContentItems.forEach(async i => {
-                    news.paragraphs.push(await i.evaluate(item => item.innerText))
-                })
-            } else if (url.includes("yasemin.com")) {
-                const galleryItems = await page.$$("div[class='gallery-item']")
-                for (const galleryItem of galleryItems) {
-                    const galleryContent = await galleryItem.$("span[class='description'] > p")
-                    const contentText = await galleryContent.evaluate(a => a.innerText)
-                    if (contentText) {
-                        news.paragraphs.push(contentText)
+                    if (realTrackingData.last_message_date) {
+                        const diffMinute = moment().diff(
+                            moment(realTrackingData.last_message_date),
+                            "minutes"
+                        )
+                        if (diffMinute > 29) {
+                            const message = generateTelegramMessage(
+                                item.last_price,
+                                priceVal,
+                                item.url
+                            )
+                            await telegram.sendMessage(item.user.telegram_id, message)
+                            dbUpdate.last_message_date = moment().toISOString()
+                            dbUpdate.message_count =
+                                (Number(realTrackingData.message_count) || 0) + 1
+                        } else {
+                            logger.info(
+                                `@@@   The message could not be sent because it was already sent 15 minutes ago   @@@`
+                            )
+                        }
+                    } else {
+                        const message = generateTelegramMessage(item.last_price, priceVal, item.url)
+                        await telegram.sendMessage(item.user.telegram_id, message)
+                        dbUpdate.last_message_date = moment().toISOString()
+                        dbUpdate.message_count = (Number(realTrackingData.message_count) || 0) + 1
                     }
                 }
+                // Test Message
+                // logger.info(`item.last_price - ${item.last_price}`)
+                // logger.info(`targetPrice - ${targetPrice}`)
+                // const testMessage = generateTelegramMessage(item.last_price, priceVal, item.url)
+                // logger.info(`testMessage - ${testMessage}`)
+                // await telegram.sendMessage(item.user.telegram_id, testMessage)
+
+                if (item.last_price <= priceVal || priceVal <= targetPrice) {
+                    dbUpdate.last_price = priceVal
+                }
             }
-            console.log("news.paragraphs", news.paragraphs)
+            // if (dbUpdate.last_price && dbUpdate?.last_price > 0) {
+            //     console.log(
+            //         `dbUpdate.last_price up: ${dbUpdate.last_price} - itemId: ${itemId}`
+            //     )
+            // }
 
-            await timeout(200)
+            logger.info(`Traking Last View Update -- itemId:${itemId}`)
+            await prismaClient.tracking.update({ where: { id: itemId }, data: dbUpdate })
 
-            return resolve(news)
+            await servicePuppeteer.closePage(index.toString(), browserName)
+            return resolve(true)
         } catch (error) {
-            logger.error(`error getNewsContent: ${error}`)
-            reject()
+            console.error(error)
+            logger.info("catch (error) page.close")
+            await servicePuppeteer.closePage(job.data.id.toString(), job.data.browser)
+            return reject(false)
         }
     })
 }
 
-async function siteScanHaberler7Links(siteName: string, page: any) {
-    return new Promise<string[]>(async (resolve, reject) => {
+async function scanCompleted() {
+    return new Promise<boolean>(async (resolve, reject) => {
         try {
-            console.log("siteScanHaberler7Links: siteName", siteName.toUpperCase())
-            const siteUrl = process.env[`PAGE_URL_${siteName.toUpperCase()}`]
-            console.log("siteScanHaberler7Links: siteUrl", siteUrl)
-            const totalLinks = []
+            appData.end_date = moment().toISOString()
 
-            await page.goto(siteUrl, goToConfig)
-            await page.waitForSelector("body", { timeout: 15000 })
+            const diff = moment(appData.end_date).diff(moment(appData.start_date))
+            const diffDuration = moment.duration(diff)
+            appData.time_difference = moment
+                .utc(diffDuration.asMilliseconds())
+                .format("HH:mm:ss:SSS")
 
-            const bulletsEl = await page.$(".bullets")
-            const bulletHrefEls = bulletsEl.$$("a")
-            for (let index = 0; index < bulletHrefEls.length; index++) {
-                const hrefEl = bulletHrefEls[index]
-                const href = await hrefEl.evaluate(a => a.getAttribute("href"))
-                totalLinks.push(href)
-            }
-
-            const hbNewsBoxEl = await page.$(".hbNewsBox")
-            const hbNewsHrefEls = await hbNewsBoxEl.$$("a[href*='haberi/']")
-            for (let index = 0; index < hbNewsHrefEls.length; index++) {
-                const hrefEl = hbNewsHrefEls[index]
-                const href = await hrefEl.evaluate(a => a.getAttribute("href"))
-                totalLinks.push(href)
-            }
-
-            resolve(totalLinks.map(a => `${siteUrl}${a}`))
-        } catch (err) {
-            logger.error(`error siteScanHaber7Links: ${err}`)
-            console.error(err)
-            reject()
+            const appUpsert = await prismaClient.app.upsert({
+                where: { id: 1 },
+                update: appData,
+                create: appData,
+            })
+            logger.info("appUpsert", appUpsert)
+            return resolve(true)
+        } catch (error) {
+            console.error(error)
+            return reject(false)
         }
     })
 }
 
-async function siteScanHaber7Links(siteName: string, page: any) {
-    return new Promise<string[]>(async (resolve, reject) => {
+async function getUrlToPrice(id: number, url: string, page: any) {
+    return new Promise<string | Array<string>>(async resolve => {
         try {
-            logger.info(`siteScanHaber7Links siteName: ${siteName}`)
-            const siteUrl = process.env[`PAGE_URL_${siteName.toUpperCase()}`]
-            logger.info(`siteScanHaber7Links siteUrl: ${siteUrl}`)
-            await page.goto(siteUrl, goToConfig)
-            await page.waitForSelector("body", { timeout: 15000 })
-            const links = await page.$$("a[href*='/haber/']")
-            const writerLinks = await page.$$("a[href*='/yazarlar/']")
-            const paperLinks = await page.$$("a[href*='/gazete-mansetleri/']")
-            const todayNewsSection = await page.$("div[class='today-news-section']")
-            const todayLinks = await todayNewsSection.$$("a[href*='haber7.com']")
+            const hostname = urlToHost(url)
+            await page.goto(url, goToConfig)
 
-            const totalLinksEl = [...links, ...writerLinks, ...paperLinks, ...todayLinks]
-            const totalLinks = []
-            for (let index = 0; index < totalLinksEl.length; index++) {
-                const totalLiksEl = totalLinksEl[index]
-                const link = await totalLiksEl.evaluate(a => a.getAttribute("href"))
-                totalLinks.push(link)
+            // await page.waitForSelector("body")
+            // await timeout(100)
+
+            switch (hostname) {
+                case "www.trendyol.com":
+                    logger.info(`trendyol: id:${id}`)
+                    const trendyolPrices = []
+                    await page.waitForSelector(".product-price-container")
+                    const productPriceContainer = await page.$(".product-price-container")
+                    if (!productPriceContainer) return resolve("")
+                    const prcDsc = await productPriceContainer.$(".prc-dsc")
+                    if (!prcDsc) return resolve("")
+                    const priceTrendyol = await prcDsc.evaluate(
+                        (item: { innerText: string }) => item.innerText
+                    )
+                    trendyolPrices.push(priceTrendyol)
+                    const otherMerchantsListItems = await page.$$(".other-merchants-list-item")
+                    for (let index = 0; index < otherMerchantsListItems.length; index++) {
+                        const otherItem = otherMerchantsListItems[index]
+                        const otherPriceStr = await otherItem.evaluate(
+                            i => i.querySelector(".prc-dsc")?.innerText
+                        )
+                        trendyolPrices.push(otherPriceStr)
+                    }
+                    logger.info(`trendyol: id:${id} resolve:${JSON.stringify(trendyolPrices)}`)
+                    return resolve(trendyolPrices)
+
+                case "www.vatanbilgisayar.com":
+                    // const productDetailBigPrice = await page.$(".product-detail-big-price")
+                    // console.log("vatanbilgisayar productDetailBigPrice", productDetailBigPrice)
+                    // if (!productDetailBigPrice) return resolve("")
+                    // console.log("vatanbilgisayar wait 2 start")
+
+                    // console.log("vatanbilgisayar wait 2 end")
+                    const mobilePrice = await page.$("#mobilePrice")
+                    // console.log("vatanbilgisayar mobilePrice", mobilePrice)
+                    if (!mobilePrice) return resolve("")
+                    const priceVatan = await mobilePrice.evaluate(
+                        (item: { innerText: string }) => item.innerText
+                    )
+                    return resolve(priceVatan)
+
+                case "www.mediamarkt.com.tr":
+                    const productPriceAmount = await page.$("meta[property='product:price:amount']")
+                    if (!productPriceAmount) return resolve("")
+                    const priceMedia = productPriceAmount.evaluate(
+                        (item: { getAttribute: (arg0: string) => any }) =>
+                            item.getAttribute("content")
+                    )
+                    return resolve(priceMedia)
+
+                case "www.teknosa.com":
+                    const addtocartComponent = await page.$(".addtocart-component")
+                    if (!addtocartComponent) return resolve("")
+                    const prcLast = await addtocartComponent.$(".prc-last")
+                    if (!prcLast) return resolve("")
+                    const priceTeknosa = prcLast.evaluate(
+                        (item: { innerText: string }) => item.innerText
+                    )
+                    return resolve(priceTeknosa)
+
+                case "www.hepsiburada.com":
+                    const productPriceWrapper = await page.$(".product-price-wrapper")
+                    if (!productPriceWrapper) return resolve("")
+                    const currentPriceBeforePoint = await productPriceWrapper.$(
+                        `span[data-bind="markupText:'currentPriceBeforePoint'"]`
+                    )
+                    if (!currentPriceBeforePoint) return resolve("")
+                    const priceHepsiburada = await currentPriceBeforePoint.evaluate(
+                        (item: { innerText: string }) => item.innerText
+                    )
+                    return resolve(priceHepsiburada)
+
+                case "www.amazon.com.tr":
+                    const centerCol = await page.$("#centerCol")
+                    if (!centerCol) return resolve("")
+                    const aPriceWhole = await centerCol.$(`span[class="a-price-whole"]`)
+                    if (!aPriceWhole) return resolve("")
+                    const priceAmazon = await aPriceWhole.evaluate(
+                        (item: { innerText: string }) => item.innerText
+                    )
+                    return resolve(priceAmazon)
+
+                case "www.ciceksepeti.com":
+                    const productInfoPrice = await page.$(".product__info__price")
+                    if (!productInfoPrice) return resolve("")
+                    const jsPriceInteger = await productInfoPrice.$(`.js-price-integer`)
+                    if (!jsPriceInteger) return resolve("")
+                    const priceCiceksepeti = await jsPriceInteger.evaluate(
+                        (item: { innerText: string }) => item.innerText
+                    )
+                    return resolve(priceCiceksepeti)
+
+                case "www.carrefoursa.com":
+                    const pdPriceCont = await page.$(".pd-price-cont")
+                    if (!pdPriceCont) return resolve("")
+                    const itemPrice = await pdPriceCont.$(`span[class*='item-price']`)
+                    if (!itemPrice) return resolve("")
+                    const priceCarrefoursa = await itemPrice.evaluate((item: any) =>
+                        item.getAttribute("content")
+                    )
+                    return resolve(priceCarrefoursa)
+
+                case "www.dr.com.tr":
+                    const priceWrapper = await page.$("div[class*='price-wrapper']")
+                    if (!priceWrapper) return resolve("")
+                    const currentPrice = await priceWrapper.$(`span[class='current-price']`)
+                    if (!currentPrice) return resolve("")
+                    const priceDr = await currentPrice.evaluate((item: any) => item.innerText)
+                    return resolve(priceDr)
+
+                case "www.idefix.com":
+                    const priceIdefix = await page.evaluate(() => {
+                        const priceItem = document.querySelector(
+                            "span[class*='text-[1.125rem] xl:text-[1.375rem] leading-[1.875rem]']"
+                            // "#__next > main > div.lg:!mt-3.!my-0.lg:my-20.my-10 > div > div > div > div.lg:w-[68%].xl:w-[60%].lg:flex.lg:gap-4.xl:gap-6 > div.hidden.lg:block.xl:w-[42%].flex-1 > div.mb-6 > div.gap-y-4.mb-[1.625rem] > div.inline-flex.gap-4.justify-between.items-center.w-full > div > span"
+                        )
+
+                        return priceItem?.innerText
+                    })
+                    console.log("priceIdefix", priceIdefix)
+                    return resolve(priceIdefix)
+
+                case "www.migros.com.tr":
+                    const productDetails = await page.$("div[class='product-details']")
+                    if (!productDetails) return resolve("")
+                    const migrosAmount = await productDetails.$(`span[class='amount']`)
+                    if (!migrosAmount) return resolve("")
+                    const priceMigros = await migrosAmount.evaluate((item: any) => item.innerText)
+                    return resolve(priceMigros)
+
+                case "www.n11.com":
+                    const priceDetail = await page.$("div[class='priceDetail']")
+                    if (!priceDetail) return resolve("")
+                    const n11Ins = await priceDetail.$(`ins`)
+                    if (!n11Ins) return resolve("")
+                    const priceN11 = await n11Ins.evaluate((item: any) => item.innerText)
+                    return resolve(priceN11)
+
+                // case "www.sahibinden.com":
+                //     const turnstileWrapper = await page.$("#turnstile-wrapper")
+                //     if (turnstileWrapper) {
+                //         await page.solveRecaptchas()
+                //         await timeout(40000)
+                //         await page.waitForSelector(".classifiedInfo ")
+                //     }
+
+                //     const classifiedInfo = await page.$(".classifiedInfo ")
+                //     if (!classifiedInfo) return resolve(false)
+                //     const h3El = await classifiedInfo.$(`h3`)
+                //     if (!h3El) return resolve(false)
+                //     const priceSahibinden = await h3El.evaluate(item => item.innerText)
+                //     return resolve(priceSahibinden)
+
+                default:
+                    return resolve("")
             }
-            resolve(totalLinks)
-        } catch (err) {
-            logger.error(`error siteScanHaber7Links: ${err}`)
-            console.error(err)
-            reject()
+        } catch (error) {
+            console.error(error)
+            logger.error(`[getUrlToPrice]  >> id:${id} >>  ${url} >> ${JSON.stringify(error)}`)
+            // await trackingUpdate(id, { status: false })
+            return resolve("")
         }
     })
 }
+
+function stringToPrice(hostname: string, strPrice: string | Array<string>): number {
+    try {
+        if (!strPrice) {
+            return 0
+        }
+        let str = null
+        switch (hostname) {
+            case "www.trendyol.com":
+                const trendyolPriceNumbers = []
+                for (let index = 0; index < strPrice.length; index++) {
+                    const item = strPrice[index]
+                    const indexCommaTrendyol = item.indexOf(",")
+                    str = item
+                    if (indexCommaTrendyol > -1) {
+                        str = item.substring(indexCommaTrendyol, indexCommaTrendyol - item.length)
+                    }
+                    trendyolPriceNumbers.push(
+                        Number(str.replace("TL", "").replace(".", "").replace(",", "").trim())
+                    )
+                }
+                if (trendyolPriceNumbers.length < 1) return 0
+                trendyolPriceNumbers.sort()
+                return trendyolPriceNumbers[0]
+
+            case "www.vatanbilgisayar.com":
+                const indexVatan = strPrice.indexOf(",")
+                str = strPrice
+                if (indexVatan > -1) {
+                    str = strPrice.substring(indexVatan, indexVatan - strPrice.length)
+                }
+                return Number(str.replace(".", "").replace("TL", "").trim())
+
+            case "www.mediamarkt.com.tr":
+                const indexMediamarkt = strPrice.indexOf(".")
+                return Number(
+                    strPrice.substring(indexMediamarkt, indexMediamarkt - strPrice.length).trim()
+                )
+
+            case "www.teknosa.com":
+                const indexTeknosa = strPrice.indexOf(",")
+                str = strPrice
+                if (indexTeknosa > -1) {
+                    str = strPrice.substring(indexTeknosa, indexTeknosa - strPrice.length)
+                }
+                return Number(str.replace(" TL", "").replace(".", "").trim())
+
+            case "www.hepsiburada.com":
+                return Number(strPrice.replaceAll(".", ""))
+
+            case "www.amazon.com.tr":
+                const indexAmazon = strPrice.indexOf(",")
+                str = strPrice
+                if (indexAmazon > -1) {
+                    str = strPrice.substring(indexAmazon, indexAmazon - strPrice.length)
+                }
+                return Number(str.replace(".", "").trim())
+
+            case "www.ciceksepeti.com":
+                return Number(strPrice.replace(".", "").trim())
+
+            case "www.sahibinden.com":
+                const indexSahibinden = strPrice.indexOf(" TL")
+                str = strPrice
+                if (indexSahibinden > -1) {
+                    str = strPrice.substring(indexSahibinden, indexSahibinden - strPrice.length)
+                }
+                return Number(str.replace(".", "").trim())
+
+            case "www.carrefoursa.com":
+                const indexCarrefoursa = strPrice.indexOf(".")
+                str = strPrice
+                if (indexCarrefoursa > -1) {
+                    str = strPrice.substring(indexCarrefoursa, indexCarrefoursa - strPrice.length)
+                }
+                return Number(str.replace(".", "").trim())
+
+            case "www.dr.com.tr":
+                const indexDr = strPrice.indexOf(",")
+                str = strPrice
+                if (indexDr > -1) {
+                    str = strPrice.substring(indexDr, indexDr - strPrice.length)
+                }
+                return Number(str.replace("TL", "").replace(".", "").trim())
+
+            case "www.idefix.com":
+                const indexIdefix = strPrice.indexOf(",")
+                str = strPrice
+                if (indexIdefix > -1) {
+                    str = strPrice.substring(indexIdefix, indexIdefix - strPrice.length)
+                }
+                return Number(str.replace("TL", "").replace(".", "").trim())
+
+            case "www.migros.com.tr":
+                const indexMigros = strPrice.indexOf(",")
+                str = strPrice
+                if (indexMigros > -1) {
+                    str = strPrice.substring(indexMigros, indexMigros - strPrice.length)
+                }
+                return Number(str.replace("TL", "").replace(".", "").trim())
+
+            case "www.n11.com":
+                const indexN11 = strPrice.indexOf(",")
+                str = strPrice
+                if (indexN11 > -1) {
+                    str = strPrice.substring(indexN11, indexN11 - strPrice.length)
+                }
+                return Number(str.replace("TL", "").replace(".", "").trim())
+
+            default:
+                return 0
+        }
+    } catch (error) {
+        console.log("error stringToPrice:", error)
+        console.error(error)
+        logger.error(`[stringToPrice]  >>  ${hostname} >> ${strPrice} >> ${JSON.stringify(error)}`)
+        return 0
+    }
+}
+
+function generateTelegramMessage(lastPrice: number, price: number, url: string) {
+    // let str
+    // const indexPrice = price.toString().indexOf(".")
+    // str = price.toString()
+    // if (indexPrice > -1) {
+    //     str = str.substring(indexPrice, indexPrice - str.length)
+    // }
+    return `${url} Fiyatı ${lastPrice} TL' den ${price} TL' ye Düştü`
+}
+
+function urlToHost(url: string) {
+    const domain = new URL(url)
+    return domain.hostname
+}
+
+async function trackingUpdate(id: number, data: any) {
+    prismaClient.tracking.update({ where: { id }, data })
+}
+
+// Text Content innertext innerhtml search sample trendyol its working
+// var xpath = "//button[text()='Gelince Haber Ver']";
+// var matchingElement = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
 
 function createBackup() {
-    if (process.env.NODE_ENV == "development") return
-    try {
-        const d = new Date()
-        const dir = process.cwd()
-        const fileName = `news_db_${d.getDay()}_backup.tar`
-        const writePath = `${dir}/${
-            process.env.NODE_ENV == "production" ? "dist/" : "src/"
-        }backup/${fileName}`
+    logger.info(`@@@ createBackup Start @@@`)
+    const d = new Date()
+    const dir = process.cwd()
+    const fileName = `price_tracking_db_${d.getDate()}_${d.getMonth()}_${d.getFullYear()}_backup.tar`
+    const writePath = `${dir}/${NODE_ENV == "production" ? "dist/" : "src/"}backup/${fileName}`
 
-        execute(`pg_dump -U postgres -h localhost -p 5432 -f ${writePath} -F t -d news-db`)
-            .then(async () => {
-                logger.info(`Backup created successfully`)
-                serviceGoogleStorage.uploadFile(writePath, fileName)
-            })
-            .catch((error: any) => {
-                logger.error(`[createBackup] >> Failed CI/CD! ${JSON.stringify(error)}`)
-                console.error("Failed CI/CD!", error)
-            })
-    } catch (error) {
-        logger.error(`error createBackup: ${JSON.stringify(error)}`)
-        console.error(error)
-    }
+    logger.info("@@@@@@ run execute execute @@@@@@")
+    execute(
+        `${NODE_ENV == "production" ? "docker exec -it postgres bash &&" : ""} export PGPASSWORD='${POSTGRES_PASSWORD}'; pg_dump -U ${POSTGRES_USER} -h ${SERVER_ADDRESS} -p 5432 -f ${writePath} -F t -d price-tracking-db`
+    )
+        .then(async () => {
+            logger.info(`@@@ Backup created successfully @@@`)
+            serviceGoogleStorage.uploadFile(writePath, fileName)
+        })
+        .catch((error: any) => {
+            logger.error(`@@@ [createBackup] >> Failed CI/CD! ${JSON.stringify(error)}   @@@`)
+            console.error("Failed CI/CD!", error)
+        })
+    execute(`redis-cli flushall`)
+        .then(async () => {
+            logger.info(`@@@ redis-cli flushall completed @@@`)
+        })
+        .catch((error: any) => {
+            logger.error(`@@@ [redis-cli flushall] >> Failed ! ${JSON.stringify(error)}   @@@`)
+        })
 }
 
-export default function startBackupJob() {
-    cron.schedule("0 */30 8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23 * * *", async () => {
-        startNewsSearch()
-    })
-    // console.log("valid", cron.validate("0 */5 * * * *"))
-    startNewsSearch()
+export default async function startCronJob() {
+    if (["production", "development"].includes(NODE_ENV || "")) {
+        const appObj = await prismaClient.app.findFirst()
+        logger.info(`cron_time: ${appObj.cron_time}`)
 
-    if (process.env.NODE_ENV === "production") {
+        const cronValid = cron.validate(`0 */${appObj.cron_time || "5"} * * * *`)
+        logger.info(`@@@  cronValid:${cronValid}  @@@`)
+        if (!cronValid) {
+            cron.schedule(`0 */3 * * * *`, async () => startSearch())
+        } else {
+            cron.schedule(`0 */${appObj.cron_time || "3"} * * * *`, async () => startSearch())
+        }
+        startSearch()
+        appData.start_date = moment().toISOString()
+    }
+
+    if (NODE_ENV == "production") {
         cron.schedule("0 0 23 * * *", async () => {
             createBackup()
         })
         createBackup()
+    }
+}
+
+async function startSearch() {
+    logger.info("@@@  startSearch  @@@")
+    const appObj = await prismaClient.app.findFirst()
+    pageCount = appObj.page_count || 5
+    browserCount = appObj.browser_count || 1
+    const items = await prismaClient.tracking.findMany({
+        where: { status: true, deleted: false },
+        include: {
+            user: true,
+        },
+    })
+    trackingLength = items.length
+    logger.info(`@@@  pageCount:${pageCount}  @@@  browserCount:${browserCount}  @@@`)
+    logger.info(`@@@   tracking items length: ${items.length}   @@@`)
+
+    for (let index = 0; index < browserCount; index++) {
+        // if (index in trackingQueues) {
+        //     // await trackingQueues[index].drain()
+        //     await trackingQueues[index].clean(
+        //         cronTime * 60000, // 1 minute
+        //         items.length, // max number of jobs to clean
+        //         "wait"
+        //     )
+        // }
+        if (!(index in trackingQueues)) {
+            trackingQueues[index] = new Queue(`queue_${index}`, {
+                connection,
+            })
+            queueEvents[index] = new QueueEvents(`queue_${index}`)
+            queueEvents[index].on("completed", async ({ jobId }: any) => {
+                trackingScanCount++
+                if (trackingScanCount % trackingLength == 0) {
+                    await scanCompleted()
+                    trackingScanCount = 0
+                    appData.start_date = moment().toISOString()
+                }
+            })
+        } else {
+            await trackingQueues[index].obliterate()
+        }
+        if (!(index in trackingWorkers)) {
+            trackingWorkers[index] = new Worker(
+                `queue_${index}`,
+                async (job: any) => trackingItemWork(job),
+                {
+                    connection,
+                    concurrency: pageCount,
+                    removeOnComplete: { age: 1800, count: 500 },
+                    removeOnFail: { age: 1 * 3600, count: 2000 },
+                    autorun: true,
+                    useWorkerThreads: true,
+                    limiter: {
+                        max: pageCount,
+                        duration: pageCount * 1100,
+                        groupKey: `queue_${index}`,
+                    },
+                }
+            )
+        }
+
+        // const counts = await trackingQueues[index].getJobCounts("wait")
+        // const countWait = counts.wait
+        // logger.info(`@@@  getJobCounts - countWait:${countWait}  @@@@`)
+        // if (countWait > items.length) {
+        //     let deletedJobIds
+        //     if (countWait > items.length * 2) {
+        //         deletedJobIds = await trackingQueues[index].clean(
+        //             cronTime * 2 * 60000, // 1 minute
+        //             Math.floor(countWait / 2), // max number of jobs to clean
+        //             "wait"
+        //         )
+        //     } else {
+        //         deletedJobIds = await trackingQueues[index].clean(
+        //             cronTime * 2 * 60000, // 1 minute
+        //             Math.floor(items.length / 3), // max number of jobs to clean
+        //             "wait"
+        //         )
+        //     }
+
+        //     logger.info(
+        //         `@@@   trackingQueues[${index}].clean response:   ${JSON.stringify(deletedJobIds)}   @@@`
+        //     )
+        //     logger.info(`@@@   deletedJobIds:${deletedJobIds.length}   @@@`)
+        // }
+
+        startPriceTracking(index.toString(), items)
     }
 }
