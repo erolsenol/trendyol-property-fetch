@@ -13,7 +13,8 @@ class IndexRoute implements Routes {
 
     private initializeRoutes() {
         this.router.get("/", this.indexController.index)
-        this.router.post("/get-property", this.indexController.getProperty)
+        this.router.post("/trendyol/get-property", this.indexController.getProperty)
+        this.router.post("/trendyol/get-price", this.indexController.getPrice)
 
         // this.router.get("/favicon.ico", this.indexController.favicon)
     }
