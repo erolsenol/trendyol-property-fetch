@@ -42,40 +42,40 @@ module.exports = {
                 FOLDER_PREFIX: "trendyol/",
             },
         },
-        // {
-        //     name: "news-api-dev-3000", // pm2 start App name
-        //     script: "ts-node", // ts-node
-        //     args: "-r tsconfig-paths/register --transpile-only src/server.ts", // ts-node args
-        //     exec_mode: "cluster", // 'cluster' or 'fork'
-        //     instance_var: "news-dev", // instance variable
-        //     instances: 1, // pm2 instance count
-        //     autorestart: true, // auto restart if process crash
-        //     watch: false, // files change automatic restart
-        //     ignore_watch: ["node_modules", "logs"], // ignore files change
-        //     max_memory_restart: "1G", // restart if process use more than 1G memory
-        //     merge_logs: true, // if true, stdout and stderr will be merged and sent to pm2 log
-        //     output: "./logs/access.log", // pm2 log file
-        //     error: "./logs/error.log", // pm2 error log file
-        //     env: {
-        //         // environment variable
-        //         PORT: 3000,
-        //         NODE_ENV: "development",
-        //         DATABASE_URL: "postgresql://postgres:password@localhost:5432/news-db",
-        //         ACCESS_TOKEN_KEY: "access1secret",
-        //         REFRESH_TOKEN_KEY: "refresh1secret",
-        //         ACCESS_TOKEN_EXPIRESIN: "300m",
-        //         REFRESH_TOKEN_EXPIRESIN: "1d",
-        //         SESSION_KEY: "session1secret",
-        //         API_TAG: "api/",
-        //         API_VERSION: "v1/",
-        //         LOG_FORMAT: "dev",
-        //         LOG_DIR: "../logs",
-        //         ORIGIN: "*",
-        //         CREDENTIALS: "true",
-        //         AWS_S3_TEST_IMAGE_URL:
-        //             "https://news-bucket-111.s3.eu-central-1.amazonaws.com/images/rosierin_yeni_adresi_prensipte_anlasti_1703403400_118.jpg",
-        //     },
-        // },
+        {
+            name: "trendyol-api-dev-3001", // pm2 start App name
+            script: "ts-node", // ts-node
+            args: "-r tsconfig-paths/register --transpile-only src/server.ts", // ts-node args
+            exec_mode: "cluster", // 'cluster' or 'fork'
+            instance_var: "news-dev", // instance variable
+            instances: 1, // pm2 instance count
+            autorestart: true, // auto restart if process crash
+            watch: false, // files change automatic restart
+            ignore_watch: ["node_modules", "logs"], // ignore files change
+            max_memory_restart: "1G", // restart if process use more than 1G memory
+            merge_logs: true, // if true, stdout and stderr will be merged and sent to pm2 log
+            output: "./logs/access.log", // pm2 log file
+            error: "./logs/error.log", // pm2 error log file
+            env: {
+                // environment variable
+                PORT: 3001,
+                NODE_ENV: "development",
+                DATABASE_URL: "postgresql://postgres:password@localhost:5432/news-db",
+                ACCESS_TOKEN_KEY: "access1secret",
+                REFRESH_TOKEN_KEY: "refresh1secret",
+                ACCESS_TOKEN_EXPIRESIN: "300m",
+                REFRESH_TOKEN_EXPIRESIN: "1d",
+                SESSION_KEY: "session1secret",
+                API_TAG: "api/",
+                API_VERSION: "v1/",
+                LOG_FORMAT: "dev",
+                LOG_DIR: "../logs",
+                ORIGIN: "*",
+                CREDENTIALS: "true",
+                AWS_S3_TEST_IMAGE_URL:
+                    "https://news-bucket-111.s3.eu-central-1.amazonaws.com/images/rosierin_yeni_adresi_prensipte_anlasti_1703403400_118.jpg",
+            },
+        },
     ],
     deploy: {
         production: {
