@@ -37,16 +37,15 @@ class IndexController {
                 browser = await servicePuppeteer.newBrowser()
             }
 
-            const resArr = []
+            const promises = []
             for (let index = 0; index < data.length; index++) {
                 const item = data[index]
-                const liItems = await this.getTrendyolProperty(item.url, index)
-                console.log("liItems", liItems)
-                resArr.push({ id: item.id, data: liItems })
+                promises.push(this.getTrendyolProperty(item.url, index))
             }
+            const allRes = await Promise.all(promises)
 
             res.status(200).json({
-                data: resArr,
+                data: allRes,
                 message: "success",
             })
         } catch (error) {
@@ -68,17 +67,15 @@ class IndexController {
                 browser = await servicePuppeteer.newBrowser()
             }
 
-            const resArr = []
-            // const promises = []
+            const promises = []
             for (let index = 0; index < data.length; index++) {
                 const item = data[index]
-                const price = await this.getTrendyolPrice(item.url, index)
-                console.log("price", price)
-                resArr.push({ id: item.id, data: price })
+                promises.push(this.getTrendyolPrice(item.url, index))
             }
+            const allRes = await Promise.all(promises)
 
             res.status(200).json({
-                data: resArr,
+                data: allRes,
                 message: "success",
             })
         } catch (error) {
