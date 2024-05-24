@@ -84,10 +84,10 @@ class IndexController {
     }
 
     async getTrendyolProperty(url, index) {
-        pages[index] = await servicePuppeteer.newPage(index)
-        await pages[index].goto(url, goToConfig)
-        await pages[index].waitForSelector("body", { timeout: 15000 })
-        const detailAttrContainer = await pages[index].$$(".detail-attr-container")
+        pages[`property_${index}`] = await servicePuppeteer.newPage(`property_${index}`)
+        await pages[`property_${index}`].goto(url, goToConfig)
+        await pages[`property_${index}`].waitForSelector("body", { timeout: 15000 })
+        const detailAttrContainer = await pages[`property_${index}`].$$(".detail-attr-container")
         const liItems = []
 
         if (!detailAttrContainer) {
@@ -107,15 +107,15 @@ class IndexController {
                 liItems.push(data)
             }
         }
-        await servicePuppeteer.closePage(index)
+        await servicePuppeteer.closePage(`property_${index}`)
         return liItems
     }
 
     async getTrendyolPrice(url, index) {
-        pages[index] = await servicePuppeteer.newPage(index)
-        await pages[index].goto(url, goToConfig)
-        await pages[index].waitForSelector("body", { timeout: 15000 })
-        const productPriceContainer = await pages[index].$(".product-price-container")
+        pages[`price_${index}`] = await servicePuppeteer.newPage(`price_${index}`)
+        await pages[`price_${index}`].goto(url, goToConfig)
+        await pages[`price_${index}`].waitForSelector("body", { timeout: 15000 })
+        const productPriceContainer = await pages[`price_${index}`].$(".product-price-container")
         if (!productPriceContainer) return null
 
         const priceEl = await productPriceContainer.$(".prc-dsc")
