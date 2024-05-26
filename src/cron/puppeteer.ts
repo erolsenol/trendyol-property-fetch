@@ -15,8 +15,8 @@ const NODE_ENV = process.env.NODE_ENV
 
 const headless = NODE_ENV === "development" ? false : "new"
 const browserConfig: PuppeteerLaunchOptions = {
-    headless: "new",
-    // headless,
+    // headless: "new",
+    headless: false,
     dumpio: true,
     defaultViewport: null,
     devtools: false,
@@ -40,11 +40,11 @@ const browserConfig: PuppeteerLaunchOptions = {
 export const goToConfig = {
     // waitUntil: "networkidle2",
     waitUntil: "domcontentloaded",
-    timeout: 20000,
+    timeout: 60000,
 }
 
 const customUA =
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Safari/537.36"
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
 
 class ServicePuppeteer {
     browser: any = null
