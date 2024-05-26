@@ -4,6 +4,25 @@
     "description": "Express Prisma News API",
     "author": "Erol Senol <erolsnl@gmail.com>",
     "license": "ISC",
+    "scripts": {
+        "start:dev": "npm run build && cross-env NODE_ENV=production node dist/server.js",
+        "start": "nodemon dist/server.js cross-env NODE_ENV=production",
+        "dev": "cross-env NODE_ENV=development nodemon",
+        "build": "swc src -d dist --source-maps --copy-files --env-name='production'",
+        "build:tsc": "tsc && tsc-alias",
+        "test": "jest --forceExit --detectOpenHandles",
+        "lint": "eslint --ignore-path .gitignore --ext .ts src/",
+        "lint:fix": "npm run lint -- --fix",
+        "prisma:init": "npx prisma init",
+        "prisma:generate": "npx prisma generate",
+        "prisma:migrate": "npx prisma migrate dev --preview-feature --create-only",
+        "prisma:db-push": "npx prisma db push",
+        "prisma:db-seed": "npx prisma db seed",
+        "prisma:studio": "npx prisma studio",
+        "prisma:deploy": "npx prisma migrate deploy",
+        "pm2:prod": "npm run build && pm2 start ecosystem.config.js --only trendyol-property-fetch-3000",
+        "docker": "docker-compose -f docker-compose.yml up"
+    },
     "repository": {
         "type": "git",
         "url": "https://github.com/erolsenol/node-express-prisma-news-api.git"
@@ -23,25 +42,6 @@
     },
     "engines": {
         "node": ">=14 <=21"
-    },
-    "scripts": {
-        "start:dev": "npm run build && cross-env NODE_ENV=production node dist/server.js",
-        "start": "nodemon dist/server.js cross-env NODE_ENV=production",
-        "dev": "cross-env NODE_ENV=development nodemon",
-        "build": "swc src -d dist --source-maps --copy-files --env-name='production'",
-        "build:tsc": "tsc && tsc-alias",
-        "test": "jest --forceExit --detectOpenHandles",
-        "lint": "eslint --ignore-path .gitignore --ext .ts src/",
-        "lint:fix": "npm run lint -- --fix",
-        "prisma:init": "npx prisma init",
-        "prisma:generate": "npx prisma generate",
-        "prisma:migrate": "npx prisma migrate dev --preview-feature --create-only",
-        "prisma:db-push": "npx prisma db push",
-        "prisma:db-seed": "npx prisma db seed",
-        "prisma:studio": "npx prisma studio",
-        "prisma:deploy": "npx prisma migrate deploy",
-        "pm2:prod": "npm run build && pm2 start ecosystem.config.js --only trendyol-property-fetch-3000",
-        "docker": "docker-compose -f docker-compose.yml up"
     },
     "prisma": {
         "schema": "./src/prisma/schema.prisma",
