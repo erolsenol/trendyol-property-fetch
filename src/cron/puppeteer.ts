@@ -15,8 +15,8 @@ const NODE_ENV = process.env.NODE_ENV
 
 const headless = NODE_ENV === "development" ? false : "new"
 const browserConfig: PuppeteerLaunchOptions = {
-    // headless: "new",
-    headless: false,
+    headless: "new",
+    // headless: false,
     dumpio: true,
     defaultViewport: null,
     devtools: false,
