@@ -40,8 +40,7 @@
         "prisma:db-seed": "npx prisma db seed",
         "prisma:studio": "npx prisma studio",
         "prisma:deploy": "npx prisma migrate deploy",
-        "pm2:prod": "npm run build && pm2 start ecosystem.config.js --only trendyol-api-prod-3000",
-        "pm2:dev": "pm2 start ecosystem.config.js --only trendyol-api-dev-3001",
+        "pm2:prod": "npm run build && pm2 start ecosystem.config.js --only trendyol-property-fetch-3000",
         "docker": "docker-compose -f docker-compose.yml up"
     },
     "prisma": {
