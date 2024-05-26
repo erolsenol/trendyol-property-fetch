@@ -40,10 +40,10 @@ class IndexController {
             const promises = []
             for (let index = 0; index < data.length; index++) {
                 const item = data[index]
-                promises.push(this.getTrendyolProperty(item.url, index))
+                promises.push(this.getTrendyolProperty(item, index))
             }
             const allRes = await Promise.all(promises)
-
+            console.log("allRes", allRes)
             res.status(200).json({
                 data: allRes,
                 message: "success",
@@ -70,7 +70,7 @@ class IndexController {
             const promises = []
             for (let index = 0; index < data.length; index++) {
                 const item = data[index]
-                promises.push(this.getTrendyolPrice(item.url, index))
+                promises.push(this.getTrendyolPrice(item, index))
             }
             const allRes = await Promise.all(promises)
 
@@ -83,9 +83,9 @@ class IndexController {
         }
     }
 
-    async getTrendyolProperty(url, index) {
+    async getTrendyolProperty(item, index) {
         pages[`property_${index}`] = await servicePuppeteer.newPage(`property_${index}`)
-        await pages[`property_${index}`].goto(url, goToConfig)
+        await pages[`property_${index}`].goto(item.url, goToConfig)
         await pages[`property_${index}`].waitForSelector("body", { timeout: 60000 })
         const detailAttrContainer = await pages[`property_${index}`].$$(".detail-attr-container")
         const liItems = []
@@ -108,12 +108,12 @@ class IndexController {
             }
         }
         await servicePuppeteer.closePage(`property_${index}`)
-        return liItems
+        return { id: item.id, data: liItems }
     }
 
-    async getTrendyolPrice(url, index) {
+    async getTrendyolPrice(item, index) {
         pages[`price_${index}`] = await servicePuppeteer.newPage(`price_${index}`)
-        await pages[`price_${index}`].goto(url, goToConfig)
+        await pages[`price_${index}`].goto(item.url, goToConfig)
         await pages[`price_${index}`].waitForSelector("body", { timeout: 60000 })
         const productPriceContainer = await pages[`price_${index}`].$(".product-price-container")
         if (!productPriceContainer) return null
@@ -128,8 +128,9 @@ class IndexController {
             str = priceStr.substring(indexCommaTrendyol, indexCommaTrendyol - priceStr.length)
         }
         const priceVal = Number(str.replace("TL", "").replace(".", "").replace(",", "").trim())
+        await servicePuppeteer.closePage(`price_${index}`)
 
-        return priceVal
+        return { id: item.id, data: priceVal }
     }
 }
 
