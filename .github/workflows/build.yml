@@ -4,10 +4,10 @@
 name: Node.js CI
 
 on:
-    push:
-        branches: ["main"]
+    # push:
+    #     branches: ["main"]
     pull_request:
-        branches: ["main"]
+        branches: ["qwe"]
 
 jobs:
     build:
@@ -36,7 +36,7 @@ jobs:
                   passphrase: ${{ secrets.PASSPHRASE }}
                   source: "dist,package.json,ecosystem.config.js"
                   #   source: "tests/a.txt,tests/b.txt"
-                  target: node-express-prisma-news-api/
+                  target: trendyol-property-fetch/
 
             - name: executing remote ssh commands pm2 reload
               uses: appleboy/ssh-action@v1.0.3
@@ -47,6 +47,6 @@ jobs:
                   port: ${{ secrets.PORT }}
                   passphrase: ${{ secrets.PASSPHRASE }}
                   script: |
-                      cd node-express-prisma-news-api
+                      cd trendyol-property-fetch
                       npm i
                       pm2 reload ecosystem.config.js --only news-api-prod-3000

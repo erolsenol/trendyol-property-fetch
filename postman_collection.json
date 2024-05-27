@@ -1,7 +1,7 @@
 {
 	"info": {
 		"_postman_id": "2a1f84c7-f8a4-4508-a06c-6ed10d5cb913",
-		"name": "express-prisma-news-api",
+		"name": "trendyol-property-fetch",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
 	"item": [

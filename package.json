@@ -1,5 +1,5 @@
 {
-    "name": "express-prisma-news-api",
+    "name": "trendyol-property-fetch",
     "version": "0.0.1",
     "description": "Express Prisma News API",
     "author": "Erol Senol <erolsnl@gmail.com>",
@@ -23,10 +23,6 @@
         "pm2:prod": "npm run build && pm2 start ecosystem.config.js --only trendyol-property-fetch-3000",
         "docker": "docker-compose -f docker-compose.yml up"
     },
-    "repository": {
-        "type": "git",
-        "url": "https://github.com/erolsenol/node-express-prisma-news-api.git"
-    },
     "keywords": [
         "typescript",
         "express",
@@ -36,10 +32,6 @@
         "news",
         "news-api"
     ],
-    "homepage": "https://github.com/erolsenol/node-express-prisma-news-api",
-    "bugs": {
-        "url": "https://github.com/erolsenol/node-express-prisma-news-api/issues"
-    },
     "engines": {
         "node": ">=14 <=21"
     },

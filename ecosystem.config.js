@@ -39,7 +39,6 @@ module.exports = {
             user: "erol-senol",
             host: "0.0.0.0",
             ref: "origin/main",
-            repo: "git@github.com:node-express-prisma-news-api.git",
             path: "dist/server.js",
             "post-deploy":
                 "npm install && npm run build && pm2 reload ecosystem.config.js --only prod",
