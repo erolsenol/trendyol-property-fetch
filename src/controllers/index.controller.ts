@@ -1,6 +1,6 @@
 import { NextFunction, Request, Response } from "express"
 import { servicePuppeteer, goToConfig } from "@/cron/puppeteer"
-import _ from "lodash"
+import { logger } from "@utils/logger"
 
 const pages = {}
 let browser = null
@@ -37,13 +37,14 @@ class IndexController {
                 browser = await servicePuppeteer.newBrowser()
             }
 
+            logger.info(`@@@@@  data.length:${data.length}  @@@@@`)
             const promises = []
             for (let index = 0; index < data.length; index++) {
                 const item = data[index]
                 promises.push(this.getTrendyolProperty(item, index))
             }
             const allRes = await Promise.all(promises)
-            console.log("allRes", allRes)
+            logger.info(`@@@@@  allRes:${allRes}  @@@@@`)
             res.status(200).json({
                 data: allRes,
                 message: "success",
@@ -66,14 +67,14 @@ class IndexController {
             if (!browser) {
                 browser = await servicePuppeteer.newBrowser()
             }
-
+            logger.info(`@@@@@  data.length:${data.length}  @@@@@`)
             const promises = []
             for (let index = 0; index < data.length; index++) {
                 const item = data[index]
                 promises.push(this.getTrendyolPrice(item, index))
             }
             const allRes = await Promise.all(promises)
-
+            logger.info(`@@@@@  allRes:${allRes}  @@@@@`)
             res.status(200).json({
                 data: allRes,
                 message: "success",
@@ -82,7 +83,6 @@ class IndexController {
             next(error)
         }
     }
-
     async getTrendyolProperty(item, index) {
         pages[`property_${index}`] = await servicePuppeteer.newPage(`property_${index}`)
         await pages[`property_${index}`].goto(item.url, goToConfig)
