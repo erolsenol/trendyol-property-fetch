@@ -108,7 +108,7 @@ class IndexController {
             }
         }
         await servicePuppeteer.closePage(`property_${index}`)
-        return { id: item.id, data: liItems }
+        return { id: item.id, url: item.url, data: liItems }
     }
 
     async getTrendyolPrice(item, index) {
@@ -130,7 +130,7 @@ class IndexController {
         const priceVal = Number(str.replace("TL", "").replace(".", "").replace(",", "").trim())
         await servicePuppeteer.closePage(`price_${index}`)
 
-        return { id: item.id, data: priceVal }
+        return { id: item.id, url: item.url, data: priceVal }
     }
 }
 
