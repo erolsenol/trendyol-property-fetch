@@ -180,7 +180,7 @@ class IndexController {
             const promises = []
             for (let index = 0; index < data.length; index++) {
                 const item = data[index]
-                console.log("item", index, item)
+
                 promises.push(this.getHepsiburadaPrice(item, index))
             }
             const allRes = await Promise.all(promises)
@@ -222,7 +222,6 @@ class IndexController {
         return { id: item.id, url: item.url, data: liItems }
     }
     async getHepsiburadaPrice(item, index) {
-        console.log("item", item)
         pages[`hepsiburada_price_${index}`] = await servicePuppeteer.newPage(
             `hepsiburada_price_${index}`
         )
@@ -231,12 +230,12 @@ class IndexController {
 
         const productPriceWrapper =
             await pages[`hepsiburada_price_${index}`].$(".product-price-wrapper")
-        console.log("productPriceWrapper", productPriceWrapper)
+
         if (!productPriceWrapper) return null
         const currentPriceBeforePoint = await productPriceWrapper.$(
             `span[data-bind="markupText:'currentPriceBeforePoint'"]`
         )
-        console.log("currentPriceBeforePoint", currentPriceBeforePoint)
+
         if (!currentPriceBeforePoint) return null
         const priceStr = await currentPriceBeforePoint.evaluate(
             (item: { innerText: string }) => item.innerText
