@@ -83,7 +83,6 @@ class IndexController {
             next(error)
         }
     }
-
     async getTrendyolProperty(item, index) {
         pages[`property_${index}`] = await servicePuppeteer.newPage(`property_${index}`)
         await pages[`property_${index}`].goto(item.url, goToConfig)
@@ -243,6 +242,113 @@ class IndexController {
 
         const priceVal = Number(priceStr.replaceAll(".", ""))
         await servicePuppeteer.closePage(`hepsiburada_price_${index}`)
+
+        return { id: item.id, url: item.url, data: priceVal }
+    }
+
+    public getPropertyPtt = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const { data } = req.body
+            if (!data) {
+                res.status(400).json({
+                    message: "data property required",
+                })
+                return
+            }
+
+            if (!browser) {
+                browser = await servicePuppeteer.newBrowser()
+            }
+
+            logger.info(`@@@@@  data.length:${data.length}  @@@@@`)
+            const promises = []
+            for (let index = 0; index < data.length; index++) {
+                const item = data[index]
+                promises.push(this.getPttProperty(item, index))
+            }
+            const allRes = await Promise.all(promises)
+            logger.info(`@@@@@  allRes:${allRes}  @@@@@`)
+            res.status(200).json({
+                data: allRes,
+                message: "success",
+            })
+        } catch (error) {
+            next(error)
+        }
+    }
+    public getPricePtt = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const { data } = req.body
+            if (!data) {
+                res.status(400).json({
+                    message: "data property required",
+                })
+                return
+            }
+
+            if (!browser) {
+                browser = await servicePuppeteer.newBrowser()
+            }
+            logger.info(`@@@@@  data.length:${data.length}  @@@@@`)
+            const promises = []
+            for (let index = 0; index < data.length; index++) {
+                const item = data[index]
+
+                promises.push(this.getPttPrice(item, index))
+            }
+            const allRes = await Promise.all(promises)
+            logger.info(`@@@@@  allRes:${allRes}  @@@@@`)
+            res.status(200).json({
+                data: allRes,
+                message: "success",
+            })
+        } catch (error) {
+            next(error)
+        }
+    }
+    async getPttProperty(item, index) {
+        pages[`ptt_property_${index}`] = await servicePuppeteer.newPage(`ptt_property_${index}`)
+        await pages[`ptt_property_${index}`].goto(item.url, goToConfig)
+        await pages[`ptt_property_${index}`].waitForSelector("body", { timeout: 60000 })
+        const tableAuto = await pages[`ptt_property_${index}`].$("table[class*='table-auto']")
+        const liItems = []
+
+        if (!tableAuto) {
+            return "#productTechSpecContainer element not found"
+        }
+        const trEls = await tableAuto.$$("tr")
+        for (let index = 0; index < trEls.length; index++) {
+            const trEl = trEls[index]
+            const data = {}
+
+            const property = await trEl.evaluate(a => a.children[0].innerText)
+            const value = await trEl.evaluate(a => a.children[1].innerText)
+
+            data[property] = value
+            liItems.push(data)
+        }
+        await servicePuppeteer.closePage(`ptt_property_${index}`)
+        return { id: item.id, url: item.url, data: liItems }
+    }
+    async getPttPrice(item, index) {
+        pages[`ptt_price_${index}`] = await servicePuppeteer.newPage(`ptt_price_${index}`)
+        await pages[`ptt_price_${index}`].goto(item.url, goToConfig)
+        await pages[`ptt_price_${index}`].waitForSelector("body", { timeout: 60000 })
+
+        await pages[`ptt_price_${index}`].waitForSelector("div[class~='text-eGreen-700']", {
+            timeout: 60000,
+        })
+        const textEgreen = await pages[`ptt_price_${index}`].$("div[class*='text-eGreen-700']")
+        const priceStr = await textEgreen.evaluate((item: any) => item.innerText)
+
+        const indexPtt = priceStr.indexOf(",")
+        let str = priceStr
+        if (indexPtt > -1) {
+            str = priceStr.substring(indexPtt, indexPtt - priceStr.length)
+        }
+
+        const priceVal = Number(str.replaceAll("TL", "").replaceAll(".", "").trim())
+        await servicePuppeteer.closePage(`ptt_price_${index}`)
 
         return { id: item.id, url: item.url, data: priceVal }
     }
