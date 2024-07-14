@@ -82,7 +82,7 @@ class VisitController {
         const url = await pages[`hepsiburada_visit`].evaluate(() => document.location.href)
         console.log(url)
 
-        const logicNum = randomNumber(2, 2)
+        const logicNum = randomNumber(1, 2)
         console.log("logicNum", logicNum)
         switch (logicNum) {
             case 1:
