@@ -1,7 +1,7 @@
 import { NextFunction, Request, Response } from "express"
 import { servicePuppeteer, goToConfig } from "@/cron/puppeteer"
 import { logger } from "@/utils/logger"
-import { timeout, autoScroll, randomNumber } from "@/helper"
+import { timeout, autoScroll, randomNumber, addToBasket } from "@/helper"
 import { prismaClient } from "@/prisma"
 
 const pages = {}
@@ -9,6 +9,7 @@ let browser = null
 
 class VisitController {
     public visitHepsiburada = async (req: Request, res: Response, next: NextFunction) => {
+        const breakTime = randomNumber(2000, 10000)
         try {
             const { data } = req.body
             if (!data) {
@@ -28,28 +29,45 @@ class VisitController {
                     continue
                 }
                 const item = data[index]
-                const dbVisit = await prismaClient.offer.findUnique({
+                let dbVisit = await prismaClient.offer.findUnique({
                     where: {
                         url: item.url,
                     },
                 })
                 console.log("dbVisit", dbVisit)
                 if (!dbVisit) {
-                    await prismaClient.create({
+                    dbVisit = await prismaClient.offer.create({
                         data: {
                             url: item.url,
                         },
                     })
                 }
+                console.log("dbVisit", dbVisit)
+
                 const resVisit = await this.visitHepsiburadaLogic(item)
                 console.log("resVisit", resVisit)
+
+                if (resVisit?.message === "success" && dbVisit.id) {
+                    await prismaClient.offer.update({
+                        where: {
+                            id: dbVisit.id,
+                        },
+                        data: {
+                            visitCount: (dbVisit.visitCount += 1),
+                        },
+                    })
+                }
             }
 
+            await timeout(breakTime)
+            await pages[`hepsiburada_visit`].close()
             res.status(200).json({
                 data: [],
                 message: "success",
             })
         } catch (error) {
+            await timeout(breakTime)
+            await pages[`hepsiburada_visit`].close()
             next(error)
         }
     }
@@ -63,10 +81,20 @@ class VisitController {
         const url = await pages[`hepsiburada_visit`].evaluate(() => document.location.href)
         console.log(url)
 
-        const logicNum = randomNumber(1, 2)
+        const logicNum = randomNumber(2, 2)
+        console.log("logicNum", logicNum)
         switch (logicNum) {
             case 1:
                 await autoScroll(pages[`hepsiburada_visit`])
+                break
+            case 2:
+                await addToBasket(pages[`hepsiburada_visit`])
+                const addToCart = await pages[`hepsiburada_visit`].$("#addToCart")
+                console.log("addToCart", addToCart)
+                if (addToCart) {
+                    await addToCart.click()
+                    await timeout(1000)
+                }
                 break
 
             default:

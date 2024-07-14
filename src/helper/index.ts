@@ -31,8 +31,8 @@ export async function addToBasket(page: any) {
         await new Promise(resolve => {
             let totalHeight = 0
             const distance = Math.floor(Math.random() * (200 - 50)) + 50
-            const timer = setInterval(() => {
-                const scrollHeight = 500
+            const timer = setInterval(async () => {
+                const scrollHeight = 1500
 
                 window.scrollBy(0, distance)
 
