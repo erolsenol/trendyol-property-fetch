@@ -93,7 +93,7 @@ class VisitController {
                 if (addToCart) {
                     await addToCart.click()
                     console.log("click okk")
-                    await timeout(10000)
+                    await timeout(3000)
                 }
                 break
 
