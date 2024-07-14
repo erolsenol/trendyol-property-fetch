@@ -2,6 +2,7 @@ import { NextFunction, Request, Response } from "express"
 import { servicePuppeteer, goToConfig } from "@/cron/puppeteer"
 import { logger } from "@/utils/logger"
 import { timeout, autoScroll, randomNumber } from "@/helper"
+import { prismaClient } from "@/prisma"
 
 const pages = {}
 let browser = null
@@ -23,7 +24,23 @@ class VisitController {
             logger.info(`@@@@@  data.length:${data.length}  @@@@@`)
 
             for (let index = 0; index < data.length; index++) {
+                if (!data[index]?.url) {
+                    continue
+                }
                 const item = data[index]
+                const dbVisit = await prismaClient.offer.findUnique({
+                    where: {
+                        url: item.url,
+                    },
+                })
+                console.log("dbVisit", dbVisit)
+                if (!dbVisit) {
+                    await prismaClient.create({
+                        data: {
+                            url: item.url,
+                        },
+                    })
+                }
                 const resVisit = await this.visitHepsiburadaLogic(item)
                 console.log("resVisit", resVisit)
             }
