@@ -34,7 +34,7 @@ class VisitController {
                         url: item.url,
                     },
                 })
-                console.log("dbVisit", dbVisit)
+                console.log("current dbVisit:", dbVisit)
                 if (!dbVisit) {
                     dbVisit = await prismaClient.offer.create({
                         data: {
@@ -42,7 +42,7 @@ class VisitController {
                         },
                     })
                 }
-                console.log("dbVisit", dbVisit)
+                console.log("new dbVisit:", dbVisit)
 
                 const resVisit = await this.visitHepsiburadaLogic(item)
                 console.log("resVisit", resVisit)
@@ -74,6 +74,7 @@ class VisitController {
 
     async visitHepsiburadaLogic(item) {
         pages[`hepsiburada_visit`] = await servicePuppeteer.newPage(`hepsiburada_visit`)
+        console.log("go to url:", item.url)
         await pages[`hepsiburada_visit`].goto(item.url, goToConfig)
         await pages[`hepsiburada_visit`].waitForSelector("body", { timeout: 60000 })
 
@@ -89,11 +90,13 @@ class VisitController {
                 break
             case 2:
                 await addToBasket(pages[`hepsiburada_visit`])
+                await pages[`hepsiburada_visit`].waitForSelector("#addToCart", { timeout: 10000 })
                 const addToCart = await pages[`hepsiburada_visit`].$("#addToCart")
                 console.log("addToCart", addToCart)
                 if (addToCart) {
                     await addToCart.click()
-                    await timeout(1000)
+                    console.log("click okk")
+                    await timeout(10000)
                 }
                 break
 
