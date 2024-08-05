@@ -17,7 +17,7 @@ const headless = NODE_ENV === "development" ? false : "new"
 const browserConfig: PuppeteerLaunchOptions = {
     // executablePath: "/usr/bin/chromium-browser",
     executablePath: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-    headless: false,
+    headless: "new",
     // headless: false,
     dumpio: true,
     defaultViewport: null,
