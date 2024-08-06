@@ -30,6 +30,10 @@ const browserConfig: PuppeteerLaunchOptions = {
         "--disable-gpu",
         "--disable-extensions",
         "--enable-chrome-browser-cloud-management",
+
+
+        
+        "--disable-3d-apis"
         // "--single-process",
         // "--devtools-flags=disable",
         // "--disable-web-security",
