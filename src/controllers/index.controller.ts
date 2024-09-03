@@ -1,7 +1,7 @@
 import { NextFunction, Request, Response } from "express"
 import { servicePuppeteer, goToConfig } from "@/cron/puppeteer"
 import { logger } from "@utils/logger"
-import { timeout, } from "@/helper"
+import { timeout } from "@/helper"
 
 const pages = {}
 let browser = null
@@ -199,9 +199,7 @@ class IndexController {
         )
         await pages[`hepsiburada_property_${index}`].goto(item.url, goToConfig)
         await pages[`hepsiburada_property_${index}`].waitForSelector("body", { timeout: 60000 })
-        const techSpecs = await pages[`hepsiburada_property_${index}`].$(
-            "#techSpecs"
-        )
+        const techSpecs = await pages[`hepsiburada_property_${index}`].$("#techSpecs")
 
         if (!techSpecs) {
             return "#techSpecs element not found"
@@ -214,12 +212,12 @@ class IndexController {
             return "#innerTextArr element not found"
         }
 
-        let propertyData = {}
+        const propertyData = {}
 
         if (innerTextArr[0] == "Ürün özellikleri") {
             innerTextArr.splice(0, 1)
         }
-        console.log('%csrc/controllers/index.controller.ts:227 innerTextArr', 'color: #007acc;', innerTextArr);
+
         for (let i = 0; i < innerTextArr.length; i++) {
             const el = innerTextArr[i]
 
@@ -240,20 +238,28 @@ class IndexController {
         await pages[`hepsiburada_price_${index}`].goto(item.url, goToConfig)
         await pages[`hepsiburada_price_${index}`].waitForSelector("body", { timeout: 60000 })
 
-        const productPriceWrapper =
-            await pages[`hepsiburada_price_${index}`].$(".product-price-wrapper")
-
+        const productPriceWrapper = await pages[`hepsiburada_price_${index}`].$(
+            "div[data-test-id='price-current-price']"
+        )
+        console.log(
+            "%csrc/controllers/index.controller.ts:248 productPriceWrapper",
+            "color: #007acc;",
+            productPriceWrapper
+        )
         if (!productPriceWrapper) return null
-        const currentPriceBeforePoint = await productPriceWrapper.$(
-            `span[data-bind="markupText:'currentPriceBeforePoint'"]`
+        const priceStr = await productPriceWrapper.evaluate(a => a.children[0].innerText)
+        console.log(
+            "%csrc/controllers/index.controller.ts:255 priceStr",
+            "color: #007acc;",
+            priceStr
         )
-
-        if (!currentPriceBeforePoint) return null
-        const priceStr = await currentPriceBeforePoint.evaluate(
-            (item: { innerText: string }) => item.innerText
-        )
-
-        const priceVal = Number(priceStr.replaceAll(".", ""))
+        let str
+        const indexDr = priceStr.indexOf(",")
+        str = priceStr
+        if (indexDr > -1) {
+            str = priceStr.substring(indexDr, indexDr - priceStr.length)
+        }
+        const priceVal = Number(str.replaceAll(".", ""))
         await servicePuppeteer.closePage(`hepsiburada_price_${index}`)
 
         return { id: item.id, url: item.url, data: priceVal }
