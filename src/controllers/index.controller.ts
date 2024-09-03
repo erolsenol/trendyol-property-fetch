@@ -1,6 +1,7 @@
 import { NextFunction, Request, Response } from "express"
 import { servicePuppeteer, goToConfig } from "@/cron/puppeteer"
 import { logger } from "@utils/logger"
+import { timeout, } from "@/helper"
 
 const pages = {}
 let browser = null
@@ -198,27 +199,39 @@ class IndexController {
         )
         await pages[`hepsiburada_property_${index}`].goto(item.url, goToConfig)
         await pages[`hepsiburada_property_${index}`].waitForSelector("body", { timeout: 60000 })
-        const productTechSpecContainer = await pages[`hepsiburada_property_${index}`].$(
-            "#productTechSpecContainer"
+        const techSpecs = await pages[`hepsiburada_property_${index}`].$(
+            "#techSpecs"
         )
-        const liItems = []
 
-        if (!productTechSpecContainer) {
-            return "#productTechSpecContainer element not found"
+        if (!techSpecs) {
+            return "#techSpecs element not found"
         }
-        const trEls = await productTechSpecContainer.$$("tr")
-        for (let index = 0; index < trEls.length; index++) {
-            const trEl = trEls[index]
-            const data = {}
 
-            const property = await trEl.evaluate(a => a.children[0].innerText)
-            const value = await trEl.evaluate(a => a.children[1].children[0].innerText)
+        const innerText = await techSpecs.evaluate(a => a.innerText)
+        const innerTextArr = innerText.split(/\r?\n/)
 
-            data[property] = value
-            liItems.push(data)
+        if (!innerTextArr || innerTextArr.length < 1) {
+            return "#innerTextArr element not found"
         }
+
+        let propertyData = {}
+
+        if (innerTextArr[0] == "Ürün özellikleri") {
+            innerTextArr.splice(0, 1)
+        }
+        console.log('%csrc/controllers/index.controller.ts:227 innerTextArr', 'color: #007acc;', innerTextArr);
+        for (let i = 0; i < innerTextArr.length; i++) {
+            const el = innerTextArr[i]
+
+            if (i % 2 == 0) {
+                propertyData[el] = ""
+            } else {
+                propertyData[innerTextArr[i - 1]] = el
+            }
+        }
+
         await servicePuppeteer.closePage(`hepsiburada_property_${index}`)
-        return { id: item.id, url: item.url, data: liItems }
+        return { id: item.id, url: item.url, data: propertyData }
     }
     async getHepsiburadaPrice(item, index) {
         pages[`hepsiburada_price_${index}`] = await servicePuppeteer.newPage(
