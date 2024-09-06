@@ -212,24 +212,34 @@ class IndexController {
             return "#innerTextArr element not found"
         }
 
-        const propertyData = {}
+        const propertyArr = []
 
-        if (innerTextArr[0] == "Ürün özellikleri") {
-            innerTextArr.splice(0, 1)
+        const newTextArr = []
+        for (let index = 0; index < innerTextArr.length; index++) {
+            const innerTextItem = innerTextArr[index];
+            if (!["Diğer", "Ürün özellikleri"].includes(innerTextItem.trim())) {
+                newTextArr.push(innerTextItem)
+            }
         }
 
-        for (let i = 0; i < innerTextArr.length; i++) {
-            const el = innerTextArr[i]
+        for (let i = 0; i < newTextArr.length; i++) {
+            const el = newTextArr[i]
+            const data = {}
 
             if (i % 2 == 0) {
-                propertyData[el] = ""
+                data[el] = ""
             } else {
-                propertyData[innerTextArr[i - 1]] = el
+                if (el) {
+                    data[newTextArr[i - 1]] = el
+                    propertyArr.push(data)
+                } else {
+                    delete data[newTextArr[i - 1]]
+                }
             }
         }
 
         await servicePuppeteer.closePage(`hepsiburada_property_${index}`)
-        return { id: item.id, url: item.url, data: propertyData }
+        return { id: item.id, url: item.url, data: propertyArr }
     }
     async getHepsiburadaPrice(item, index) {
         pages[`hepsiburada_price_${index}`] = await servicePuppeteer.newPage(
