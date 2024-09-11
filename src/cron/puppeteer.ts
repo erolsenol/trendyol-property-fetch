@@ -15,10 +15,10 @@ const NODE_ENV = process.env.NODE_ENV
 
 const headless = NODE_ENV === "development" ? false : "new"
 const browserConfig: PuppeteerLaunchOptions = {
-    executablePath: "/usr/bin/chromium-browser",
+    // executablePath: "/usr/bin/chromium-browser",
     //executablePath: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-    //executablePath: puppeteer.executablePath(),
-    headless: "new",
+    executablePath: puppeteer.executablePath(),
+    headless: false,
     dumpio: true,
     defaultViewport: null,
     devtools: false,
@@ -29,10 +29,7 @@ const browserConfig: PuppeteerLaunchOptions = {
         "--disable-gpu",
         "--disable-extensions",
         "--enable-chrome-browser-cloud-management",
-
-
-        
-        "--disable-3d-apis"
+        "--disable-3d-apis",
         // "--single-process",
         // "--devtools-flags=disable",
         // "--disable-web-security",

@@ -205,38 +205,64 @@ class IndexController {
             return "#techSpecs element not found"
         }
 
-        const innerText = await techSpecs.evaluate(a => a.innerText)
-        const innerTextArr = innerText.split(/\r?\n/)
+        const tableRows = []
+        const tableEl = await techSpecs.$(":nth-of-type(2)")
+        const dynamicClassName = await (
+            await tableEl.$(":first-child")
+        ).evaluate(a => a.getAttribute("class"))
+        if (!dynamicClassName) {
+            return "dynamicClassName not found"
+        }
 
-        if (!innerTextArr || innerTextArr.length < 1) {
-            return "#innerTextArr element not found"
+        const els = await tableEl.$$(`.${dynamicClassName}`)
+        for (let index = 0; index < els.length; index++) {
+            const el = els[index]
+            tableRows.push(el)
         }
 
         const propertyArr = []
-
-        const newTextArr = []
-        for (let index = 0; index < innerTextArr.length; index++) {
-            const innerTextItem = innerTextArr[index];
-            if (!["Diğer", "Ürün özellikleri"].includes(innerTextItem.trim())) {
-                newTextArr.push(innerTextItem)
-            }
-        }
-
-        for (let i = 0; i < newTextArr.length; i++) {
-            const el = newTextArr[i]
+        for (let index = 0; index < tableRows.length; index++) {
             const data = {}
+            const tableRow = tableRows[index]
+            const property = await tableRow.evaluate(a => a.children[0].innerText)
+            const value = await tableRow.evaluate(a => a.children[1].innerText)
 
-            if (i % 2 == 0) {
-                data[el] = ""
-            } else {
-                if (el) {
-                    data[newTextArr[i - 1]] = el
-                    propertyArr.push(data)
-                } else {
-                    delete data[newTextArr[i - 1]]
-                }
-            }
+            data[property] = value
+            propertyArr.push(data)
         }
+
+        // const innerText = await techSpecs.evaluate(a => a.innerText)
+        // const innerTextArr = innerText.split(/\r?\n/)
+
+        // if (!innerTextArr || innerTextArr.length < 1) {
+        //     return "#innerTextArr element not found"
+        // }
+
+        // const propertyArr = []
+
+        // const newTextArr = []
+        // for (let index = 0; index < innerTextArr.length; index++) {
+        //     const innerTextItem = innerTextArr[index]
+        //     if (!["Diğer", "Ürün özellikleri"].includes(innerTextItem.trim())) {
+        //         newTextArr.push(innerTextItem)
+        //     }
+        // }
+
+        // for (let i = 0; i < newTextArr.length; i++) {
+        //     const el = newTextArr[i]
+        //     const data = {}
+
+        //     if (i % 2 == 0) {
+        //         data[el] = ""
+        //     } else {
+        //         if (el) {
+        //             data[newTextArr[i - 1]] = el
+        //             propertyArr.push(data)
+        //         } else {
+        //             delete data[newTextArr[i - 1]]
+        //         }
+        //     }
+        // }
 
         await servicePuppeteer.closePage(`hepsiburada_property_${index}`)
         return { id: item.id, url: item.url, data: propertyArr }
@@ -251,18 +277,10 @@ class IndexController {
         const productPriceWrapper = await pages[`hepsiburada_price_${index}`].$(
             "div[data-test-id='price-current-price']"
         )
-        console.log(
-            "%csrc/controllers/index.controller.ts:248 productPriceWrapper",
-            "color: #007acc;",
-            productPriceWrapper
-        )
+
         if (!productPriceWrapper) return null
         const priceStr = await productPriceWrapper.evaluate(a => a.children[0].innerText)
-        console.log(
-            "%csrc/controllers/index.controller.ts:255 priceStr",
-            "color: #007acc;",
-            priceStr
-        )
+
         let str
         const indexDr = priceStr.indexOf(",")
         str = priceStr
