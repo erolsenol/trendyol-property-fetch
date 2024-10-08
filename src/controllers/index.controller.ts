@@ -439,8 +439,8 @@ class IndexController {
         await pages[`koctas_property_${index}`].waitForSelector("a[href='#single-prop-0']", {
             timeout: 60000,
         })
+
         const collapseBtn = await pages[`koctas_property_${index}`].$("a[href='#single-prop-0']")
-        console.log("collapseBtn", collapseBtn)
         if (!collapseBtn) {
             return "#collapseBtn element not found"
         }
