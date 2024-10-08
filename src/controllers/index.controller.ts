@@ -399,6 +399,74 @@ class IndexController {
 
         return { id: item.id, url: item.url, data: priceVal }
     }
+
+    public getPropertyKoctas = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const { data } = req.body
+            if (!data) {
+                res.status(400).json({
+                    message: "data property required",
+                })
+                return
+            }
+
+            if (!browser) {
+                browser = await servicePuppeteer.newBrowser()
+            }
+
+            logger.info(`@@@@@  data.length:${data.length}  @@@@@`)
+            const promises = []
+            for (let index = 0; index < data.length; index++) {
+                const item = data[index]
+                promises.push(this.getKoctasProperty(item, index))
+            }
+            const allRes = await Promise.all(promises)
+            logger.info(`@@@@@  allRes:${allRes}  @@@@@`)
+            res.status(200).json({
+                data: allRes,
+                message: "success",
+            })
+        } catch (error) {
+            next(error)
+        }
+    }
+    async getKoctasProperty(item, index) {
+        pages[`koctas_property_${index}`] = await servicePuppeteer.newPage(
+            `koctas_property_${index}`
+        )
+        await pages[`koctas_property_${index}`].goto(item.url, goToConfig)
+        await pages[`koctas_property_${index}`].waitForSelector("body", { timeout: 60000 })
+        await pages[`koctas_property_${index}`].waitForSelector("a[href='#single-prop-0']", {
+            timeout: 60000,
+        })
+        const collapseBtn = await pages[`koctas_property_${index}`].$("a[href='#single-prop-0']")
+        console.log("collapseBtn", collapseBtn)
+        if (!collapseBtn) {
+            return "#collapseBtn element not found"
+        }
+        await collapseBtn.click()
+        await timeout(200)
+
+        const collapseContent = await pages[`koctas_property_${index}`].$("#single-prop-0")
+        if (!collapseContent) {
+            return "#collapseContent element not found"
+        }
+        const liItems = []
+        const trEls = await collapseContent.$$("tr")
+
+        for (let index = 0; index < trEls.length; index++) {
+            const trEl = trEls[index]
+            const data = {}
+
+            const property = await trEl.evaluate(a => a.children[0].innerText)
+            const value = await trEl.evaluate(a => a.children[1].innerText)
+
+            data[property.trim()] = value.trim()
+            liItems.push(data)
+        }
+        await servicePuppeteer.closePage(`koctas_property_${index}`)
+        return { id: item.id, url: item.url, data: liItems }
+    }
 }
 
 export default IndexController
