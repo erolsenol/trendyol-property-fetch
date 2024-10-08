@@ -467,6 +467,61 @@ class IndexController {
         await servicePuppeteer.closePage(`koctas_property_${index}`)
         return { id: item.id, url: item.url, data: liItems }
     }
+    public getPriceKoctas = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const { data } = req.body
+            if (!data) {
+                res.status(400).json({
+                    message: "data property required",
+                })
+                return
+            }
+
+            if (!browser) {
+                browser = await servicePuppeteer.newBrowser()
+            }
+            logger.info(`@@@@@  data.length:${data.length}  @@@@@`)
+            const promises = []
+            for (let index = 0; index < data.length; index++) {
+                const item = data[index]
+
+                promises.push(this.getKoctasPrice(item, index))
+            }
+            const allRes = await Promise.all(promises)
+            logger.info(`@@@@@  allRes:${allRes}  @@@@@`)
+            res.status(200).json({
+                data: allRes,
+                message: "success",
+            })
+        } catch (error) {
+            next(error)
+        }
+    }
+    async getKoctasPrice(item, index) {
+        pages[`koctas_price_${index}`] = await servicePuppeteer.newPage(`koctas_price_${index}`)
+        await pages[`koctas_price_${index}`].goto(item.url, goToConfig)
+        await pages[`koctas_price_${index}`].waitForSelector("body", { timeout: 60000 })
+        await pages[`koctas_price_${index}`].waitForSelector("div[class~='prdd-price-last']", {
+            timeout: 60000,
+        })
+
+        const priceDiv = await pages[`koctas_price_${index}`].$("div[class~='prdd-price-last']")
+        if (!priceDiv) {
+            return "#priceDiv element not found"
+        }
+        const priceStr = await priceDiv.evaluate((item: any) => item.innerText)
+
+        const indexPtt = priceStr.replaceAll(" ", "").indexOf(",")
+        let str = priceStr
+        if (indexPtt > -1) {
+            str = priceStr.substring(indexPtt, indexPtt - priceStr.length)
+        }
+
+        const priceVal = Number(str.replaceAll("TL", "").replaceAll(".", "").trim())
+        await servicePuppeteer.closePage(`koctas_price_${index}`)
+
+        return { id: item.id, url: item.url, data: priceVal }
+    }
 }
 
 export default IndexController

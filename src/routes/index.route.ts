@@ -28,7 +28,7 @@ class IndexRoute implements Routes {
 
         // Test et Abdullah
         this.router.post("/koctas/get-property", this.indexController.getPropertyKoctas)
-        // this.router.post("/decathlon/get-price", this.indexController.getPriceDecathlon)
+        this.router.post("/koctas/get-price", this.indexController.getPriceKoctas)
 
         // this.router.get("/favicon.ico", this.indexController.favicon)
     }
