@@ -14,7 +14,6 @@ class IndexController {
             next(error)
         }
     }
-
     public favicon = (req: Request, res: Response, next: NextFunction) => {
         try {
             res.send("favicongDir")
@@ -23,7 +22,6 @@ class IndexController {
             next(error)
         }
     }
-
     public getPropertyTrendyol = async (req: Request, res: Response, next: NextFunction) => {
         try {
             const { data } = req.body
@@ -54,7 +52,6 @@ class IndexController {
             next(error)
         }
     }
-
     public getPriceTrendyol = async (req: Request, res: Response, next: NextFunction) => {
         try {
             const { data } = req.body
@@ -132,7 +129,6 @@ class IndexController {
 
         return { id: item.id, url: item.url, data: priceVal }
     }
-
     public getPropertyHepsiburada = async (req: Request, res: Response, next: NextFunction) => {
         try {
             const { data } = req.body
@@ -292,7 +288,6 @@ class IndexController {
 
         return { id: item.id, url: item.url, data: priceVal }
     }
-
     public getPropertyPtt = async (req: Request, res: Response, next: NextFunction) => {
         try {
             const { data } = req.body
@@ -399,7 +394,6 @@ class IndexController {
 
         return { id: item.id, url: item.url, data: priceVal }
     }
-
     public getPropertyKoctas = async (req: Request, res: Response, next: NextFunction) => {
         try {
             const { data } = req.body
@@ -519,6 +513,137 @@ class IndexController {
 
         const priceVal = Number(str.replaceAll("TL", "").replaceAll(".", "").trim())
         await servicePuppeteer.closePage(`koctas_price_${index}`)
+
+        return { id: item.id, url: item.url, data: priceVal }
+    }
+    public getPropertyCiceksepeti = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const { data } = req.body
+            if (!data) {
+                res.status(400).json({
+                    message: "data property required",
+                })
+                return
+            }
+
+            if (!browser) {
+                browser = await servicePuppeteer.newBrowser()
+            }
+
+            logger.info(`@@@@@  data.length:${data.length}  @@@@@`)
+            const promises = []
+            for (let index = 0; index < data.length; index++) {
+                const item = data[index]
+                promises.push(this.getCiceksepetiProperty(item, index))
+            }
+            const allRes = await Promise.all(promises)
+            logger.info(`@@@@@  allRes:${allRes}  @@@@@`)
+            res.status(200).json({
+                data: allRes,
+                message: "success",
+            })
+        } catch (error) {
+            next(error)
+        }
+    }
+    async getCiceksepetiProperty(item, index) {
+        pages[`ciceksepeti_property_${index}`] = await servicePuppeteer.newPage(
+            `ciceksepeti_property_${index}`
+        )
+        await pages[`ciceksepeti_property_${index}`].goto(item.url, goToConfig)
+        await pages[`ciceksepeti_property_${index}`].waitForSelector("body", { timeout: 60000 })
+        await pages[`ciceksepeti_property_${index}`].waitForSelector("a[href='#single-prop-0']", {
+            timeout: 60000,
+        })
+
+        const collapseBtn = await pages[`ciceksepeti_property_${index}`].$(
+            "a[href='#single-prop-0']"
+        )
+        if (!collapseBtn) {
+            return "#collapseBtn element not found"
+        }
+        await collapseBtn.click()
+        await timeout(200)
+
+        const collapseContent = await pages[`ciceksepeti_property_${index}`].$("#single-prop-0")
+        if (!collapseContent) {
+            return "#collapseContent element not found"
+        }
+        const liItems = []
+        const trEls = await collapseContent.$$("tr")
+
+        for (let index = 0; index < trEls.length; index++) {
+            const trEl = trEls[index]
+            const data = {}
+
+            const property = await trEl.evaluate(a => a.children[0].innerText)
+            const value = await trEl.evaluate(a => a.children[1].innerText)
+
+            data[property.trim()] = value.trim()
+            liItems.push(data)
+        }
+        await servicePuppeteer.closePage(`ciceksepeti_property_${index}`)
+        return { id: item.id, url: item.url, data: liItems }
+    }
+    public getPriceCiceksepeti = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const { data } = req.body
+            if (!data) {
+                res.status(400).json({
+                    message: "data property required",
+                })
+                return
+            }
+
+            if (!browser) {
+                browser = await servicePuppeteer.newBrowser()
+            }
+            logger.info(`@@@@@  data.length:${data.length}  @@@@@`)
+            const promises = []
+            for (let index = 0; index < data.length; index++) {
+                const item = data[index]
+
+                promises.push(this.getCiceksepetiPrice(item, index))
+            }
+            const allRes = await Promise.all(promises)
+            logger.info(`@@@@@  allRes:${allRes}  @@@@@`)
+            res.status(200).json({
+                data: allRes,
+                message: "success",
+            })
+        } catch (error) {
+            next(error)
+        }
+    }
+    async getCiceksepetiPrice(item, index) {
+        pages[`ciceksepeti_price_${index}`] = await servicePuppeteer.newPage(
+            `ciceksepeti_price_${index}`
+        )
+        await pages[`ciceksepeti_price_${index}`].goto(item.url, goToConfig)
+        await pages[`ciceksepeti_price_${index}`].waitForSelector("body", { timeout: 60000 })
+        await pages[`ciceksepeti_price_${index}`].waitForSelector(
+            "div[class~='js-price-integer']",
+            {
+                timeout: 60000,
+            }
+        )
+
+        const priceDiv = await pages[`ciceksepeti_price_${index}`].$(
+            "div[class~='js-price-integer']"
+        )
+        if (!priceDiv) {
+            return "#priceDiv element not found"
+        }
+        const priceStr = await priceDiv.evaluate((item: any) => item.innerText)
+
+        const indexPtt = priceStr.replaceAll(" ", "").indexOf(",")
+        let str = priceStr
+        if (indexPtt > -1) {
+            str = priceStr.substring(indexPtt, indexPtt - priceStr.length)
+        }
+
+        const priceVal = Number(str.replaceAll("TL", "").replaceAll(".", "").trim())
+        await servicePuppeteer.closePage(`ciceksepeti_price_${index}`)
 
         return { id: item.id, url: item.url, data: priceVal }
     }
